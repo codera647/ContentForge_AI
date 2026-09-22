@@ -84,7 +84,8 @@ Copy `.env.example` → `.env` and fill in:
 
 | Variable | Required | Description |
 |---|---|---|
-| `DATABASE_URL` | ✅ | Postgres connection string (`postgresql://…`), or MySQL/MariaDB locally (see below) |
+| `DATABASE_URL` | ✅ | Neon **pooled** Postgres connection — used by Prisma Client / the running app |
+| `DIRECT_URL` | ✅ | Neon **direct** Postgres connection — used by the Prisma CLI for migrations |
 | `AI_PROVIDER` | – | `openai` \| `anthropic` \| `mock`. Empty = auto-detect from the key present |
 | `OPENAI_API_KEY` | if openai | Any OpenAI-compatible key |
 | `OPENAI_MODEL` | – | Default `gpt-4o` |
@@ -139,17 +140,24 @@ npm run db:seed             # or: npx prisma db seed
 
 ### Fresh production database — full initialization flow
 
-1. Create a managed PostgreSQL instance (Neon / Supabase / Railway) and copy
-   its connection string.
-2. Configure `DATABASE_URL` securely — as a Vercel environment variable
-   (Project → Settings → Environment Variables) or a platform secret. Never
-   commit it to the repository.
-3. Initialize and seed:
+1. Create a managed PostgreSQL instance (e.g. [Neon](https://neon.tech)) and
+   copy **both** connection strings from its dashboard:
+   - **Pooled** (host contains `-pooler`) → `DATABASE_URL`
+   - **Direct** (non-pooled) → `DIRECT_URL`
+2. Configure both securely in the deployment environment — as Vercel
+   environment variables (Project → Settings → Environment Variables) or
+   platform secrets. Never commit them to the repository.
+   - `DATABASE_URL` (pooled) — used by the deployed application / Prisma
+     Client at runtime.
+   - `DIRECT_URL` (direct) — used by Prisma for migrations and
+     administrative database operations.
+3. Initialize and seed (uses `DIRECT_URL` for the migration):
 
    ```bash
-   export DATABASE_URL="<your managed postgres url>"   # or use the platform's env
-   npx prisma migrate deploy   # create the schema
-   npm run db:seed             # default user + 4 demo brands
+   export DATABASE_URL="<pooled url>"     # or use the platform's env
+   export DIRECT_URL="<direct url>"
+   npx prisma migrate deploy              # create the schema
+   npm run db:seed                        # default user + 4 demo brands
    ```
 
 4. Verify: `Brand` has 4 rows, `User` has 1, `Content` and
@@ -194,14 +202,15 @@ git checkout master
 This is a pure full-stack Next.js app — **no separate backend needed**. One
 deploy target covers everything.
 
-1. **Database** — create a Postgres instance (Neon / Supabase / Railway) and
-   copy the connection string.
+1. **Database** — create a Postgres instance (e.g. Neon) and copy both the
+   **pooled** and **direct** connection strings.
 2. **Push to GitHub** (above).
 3. **Vercel** → *Add New Project* → import the repo (framework auto-detected).
 4. **Environment variables** (Project → Settings → Environment Variables):
    | Key | Value |
    |---|---|
-   | `DATABASE_URL` | your Postgres URL |
+   | `DATABASE_URL` | Neon **pooled** URL (used by the app at runtime) |
+   | `DIRECT_URL` | Neon **direct** URL (used for migrations) |
    | `AI_PROVIDER` | `openai` (or `anthropic`) |
    | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | your key |
    | `OPENAI_MODEL` / `ANTHROPIC_MODEL` | optional overrides |
