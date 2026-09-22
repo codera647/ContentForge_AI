@@ -23,6 +23,73 @@ const DEFAULT_BASES = {
   anthropic: "https://api.anthropic.com/v1",
 } as const;
 
+/**
+ * Transient-failure retry for provider HTTP calls (server-side only).
+ * Retries temporary provider/network problems (429/500/502/503/504, connection
+ * failures) with short exponential backoff; never retries client or
+ * configuration errors (400/401/403 etc.), so permanent mistakes surface
+ * immediately. Respects a provider Retry-After header when reasonable (capped).
+ */
+const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
+const MAX_ATTEMPTS = 3;
+const RETRY_AFTER_CAP_MS = 5_000;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+function backoffDelay(attempt: number): number {
+  const base = 500 * attempt; // 500ms, 1000ms
+  const jitter = base * 0.2 * Math.random();
+  return Math.round(base + jitter);
+}
+
+function retryAfterMs(headerValue: string | null): number | null {
+  if (!headerValue) return null;
+  const seconds = Number(headerValue);
+  const delayMs = Number.isFinite(seconds)
+    ? seconds * 1000
+    : Math.max(0, (Date.parse(headerValue) - Date.now()) || 0);
+  if (delayMs <= 0 || delayMs > RETRY_AFTER_CAP_MS) return null;
+  return Math.round(delayMs);
+}
+
+async function fetchWithRetries(
+  provider: AiProviderName,
+  url: string,
+  init: RequestInit,
+  attempts: number = MAX_ATTEMPTS
+): Promise<Response> {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    let res: Response;
+    try {
+      res = await fetch(url, init);
+    } catch (e) {
+      // Network-level failure (connection reset, DNS, timeout) — transient.
+      if (attempt < attempts) {
+        const delay = backoffDelay(attempt);
+        console.warn(`[ai:${provider}] attempt ${attempt}/${attempts} network failure — retrying in ${delay}ms`);
+        await sleep(delay);
+        continue;
+      }
+      throw new AiProviderError(
+        `${provider} request failed: ${e instanceof Error ? e.message : "network error"}`,
+        provider
+      );
+    }
+    if (res.ok || !RETRYABLE_STATUSES.has(res.status)) return res;
+    if (attempt < attempts) {
+      const retryAfter = retryAfterMs(res.headers.get("retry-after"));
+      const delay = retryAfter ?? backoffDelay(attempt);
+      await res.text().catch(() => ""); // drain body so the socket is released
+      console.warn(
+        `[ai:${provider}] attempt ${attempt}/${attempts} got HTTP ${res.status} — retrying in ${delay}ms`
+      );
+      await sleep(delay);
+      continue;
+    }
+    return res; // final attempt: let the caller produce its normal error
+  }
+  throw new AiProviderError(`${provider} request failed after ${attempts} attempts`, provider);
+}
+
 class OpenAiProvider implements AiProvider {
   readonly name = "openai" as const;
   private key: string;
@@ -38,7 +105,7 @@ class OpenAiProvider implements AiProvider {
   async generate(opts: GenerateOptions): Promise<string> {
     let res: Response;
     try {
-      res = await fetch(`${this.base}/chat/completions`, {
+      res = await fetchWithRetries(this.name, `${this.base}/chat/completions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -103,7 +170,7 @@ class AnthropicProvider implements AiProvider {
     const user = opts.messages.filter((m) => m.role === "user").map((m) => m.content).join("\n\n");
     let res: Response;
     try {
-      res = await fetch(`${this.base}/messages`, {
+      res = await fetchWithRetries(this.name, `${this.base}/messages`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
