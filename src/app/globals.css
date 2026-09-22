@@ -1,0 +1,132 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------
+   ContentForge AI — Editorial Design Tokens
+   Warm neutral canvas, terracotta accent used sparingly for
+   primary actions / selection / status only.
+------------------------------------------------------------------ */
+@theme {
+  /* color */
+  --color-canvas: #f5f3ee;
+  --color-surface: #fbfaf7;
+  --color-surface2: #efeee9;
+  --color-ink: #20201e;
+  --color-ink2: #686761;
+  --color-faint: #929087;
+  --color-line: #dcd9d1;
+  --color-linestrong: #c5c1b8;
+  --color-accent: #c75b39;
+  --color-accentdark: #9f4328;
+  --color-accentsubtle: #f3e3dc;
+  --color-ok: #427a5b;
+  --color-warn: #a66a25;
+  --color-danger: #b34a45;
+
+  /* type */
+  --font-ui: var(--font-dm-sans), "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-editorial: var(--font-source-serif), "Source Serif 4", Georgia, "Times New Roman", serif;
+
+  /* radius — restrained by design */
+  --radius-input: 6px;
+  --radius-btn: 6px;
+  --radius-panel: 8px;
+  --radius-modal: 10px;
+
+  /* shadow — overlays only */
+  --shadow-overlay: 0 4px 16px rgb(32 32 30 / 0.08), 0 1px 4px rgb(32 32 30 / 0.06);
+}
+
+html,
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-linestrong) transparent;
+}
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-linestrong);
+  border-radius: 4px;
+}
+
+/* Motion: opacity / color only, 150–200ms */
+a,
+button,
+input,
+select,
+textarea {
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease,
+    opacity 160ms ease;
+}
+
+::selection {
+  background: var(--color-accentsubtle);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+/* Editorial helpers */
+.rule {
+  border-top: 1px solid var(--color-line);
+}
+.meta {
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--color-faint);
+}
+.eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--color-faint);
+}
+.editorial-body {
+  font-family: var(--font-editorial);
+  font-size: 17px;
+  line-height: 1.65;
+  color: var(--color-ink);
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.fade-up {
+  animation: fadeUp 180ms ease both;
+}
+
+@keyframes pulseSoft {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+.skeleton {
+  background: var(--color-surface2);
+  border-radius: 6px;
+  animation: pulseSoft 1.4s ease-in-out infinite;
+}

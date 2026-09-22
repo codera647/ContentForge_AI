@@ -1,0 +1,116 @@
+// ContentForge AI — Prisma schema (PostgreSQL)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ContentType {
+  linkedin
+  x
+  instagram
+  facebook
+  email
+  ad_copy
+  product_description
+  blog
+}
+
+enum ContentStatus {
+  draft
+  scheduled
+  published
+  archived
+}
+
+enum ScheduleStatus {
+  pending
+  published
+  cancelled
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String?
+  email     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  brands    Brand[]
+  content   Content[]
+  schedules ScheduledContent[]
+}
+
+model Brand {
+  id               String   @id @default(cuid())
+  userId           String
+  name             String
+  description      String?  @db.Text
+  industry         String?
+  targetAudience   String?  @db.Text
+  personality      String?  @db.Text
+  tone             String?  @db.Text
+  values           Json?
+  preferredPhrases Json?
+  avoidedPhrases   Json?
+  writingStyle     String?  @db.Text
+  exampleContent   String?  @db.Text
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content Content[]
+
+  @@index([userId])
+}
+
+model Content {
+  id             String        @id @default(cuid())
+  userId         String
+  brandId        String?
+  title          String
+  body           String        @db.Text
+  format         ContentType
+  topic          String?
+  audience       String?
+  objective      String?
+  tone           String?
+  keywords       Json?
+  cta            String?
+  status         ContentStatus @default(draft)
+  sourceContentId String?      // set when this record was created by repurposing
+  variationIndex Int           @default(0)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brand     Brand?             @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  source    Content?           @relation("RepurposedFrom", fields: [sourceContentId], references: [id], onDelete: SetNull)
+  repurposed Content[]         @relation("RepurposedFrom")
+  schedules ScheduledContent[]
+
+  @@index([userId, status])
+  @@index([userId, format])
+  @@index([brandId])
+}
+
+model ScheduledContent {
+  id          String         @id @default(cuid())
+  contentId   String
+  userId      String
+  platform    ContentType
+  scheduledAt DateTime
+  status      ScheduleStatus @default(pending)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  content Content @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, scheduledAt])
+  @@index([contentId])
+}
