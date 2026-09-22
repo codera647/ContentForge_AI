@@ -98,11 +98,12 @@ template provider (great for CI).
 ## Installation
 
 ```bash
-git clone <your-repo-url> contentforge-ai
+git clone https://github.com/codera647/ContentForge_AI.git contentforge-ai
 cd contentforge-ai
 npm install
 cp .env.example .env        # then edit .env
 npx prisma migrate deploy   # or: npx prisma migrate dev
+npm run db:seed             # optional: demo user + 4 demo brand voices
 npm run dev                 # http://localhost:3000
 ```
 
@@ -123,6 +124,38 @@ Apply schema changes:
 npx prisma migrate dev      # create + apply a migration (dev)
 npx prisma migrate deploy   # apply committed migrations (prod/CI)
 ```
+
+### Seeding (demo brand voices)
+
+The repo ships an **idempotent seed** (`prisma/seed.ts`) that creates the
+single-tenant default user and the four demo brand voice profiles
+(Acme Coffee, Pulse Athletics, Northstar Finance, Roamly) — verbatim, with
+their complete voice configurations. It never creates duplicates, so it is
+safe to run repeatedly.
+
+```bash
+npm run db:seed             # or: npx prisma db seed
+```
+
+### Fresh production database — full initialization flow
+
+1. Create a managed PostgreSQL instance (Neon / Supabase / Railway) and copy
+   its connection string.
+2. Configure `DATABASE_URL` securely — as a Vercel environment variable
+   (Project → Settings → Environment Variables) or a platform secret. Never
+   commit it to the repository.
+3. Initialize and seed:
+
+   ```bash
+   export DATABASE_URL="<your managed postgres url>"   # or use the platform's env
+   npx prisma migrate deploy   # create the schema
+   npm run db:seed             # default user + 4 demo brands
+   ```
+
+4. Verify: `Brand` has 4 rows, `User` has 1, `Content` and
+   `ScheduledContent` have 0. In the app, Brand Voice lists all four brands
+   and each is selectable on Create Content.
+5. Deploy the application (see *Production Deployment* below).
 
 ## AI Provider Setup
 
@@ -146,13 +179,14 @@ npm run lint       # ESLint
 
 ## GitHub Workflow
 
+The canonical repository is `codera647/ContentForge_AI` and its default
+branch is **`master`**.
+
 ```bash
-git init
-git add .
-git commit -m "ContentForge AI v1.0"
-git branch -M main
-git remote add origin git@github.com:<you>/contentforge-ai.git
-git push -u origin main
+git clone https://github.com/codera647/ContentForge_AI.git
+cd ContentForge_AI
+git checkout master
+# …make changes on a feature branch, then open a PR into master…
 ```
 
 ## Production Deployment (Vercel + managed Postgres)
