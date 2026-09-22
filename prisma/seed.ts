@@ -155,7 +155,7 @@ async function main() {
     const existing = await prisma.brand.findFirst({
       where: { name: brand.name, userId: owner.id },
     });
-    const { name, ...config } = brand;
+    const { name: _name, ...config } = brand;
     if (existing) {
       await prisma.brand.update({ where: { id: existing.id }, data: config });
     } else {
