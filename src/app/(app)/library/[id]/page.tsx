@@ -3,7 +3,7 @@
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { api, type ContentItem } from "@/lib/client";
-import { Button, ErrorBanner, Select, TextArea, TextInput } from "@/components/ui";
+import { ErrorBanner, Select, TextArea, TextInput } from "@/components/ui";
 import { CONTENT_TYPE_LABELS } from "@/lib/constants";
 import { useToast } from "@/components/ToastProvider";
 import ScheduleDialog from "@/components/ScheduleDialog";

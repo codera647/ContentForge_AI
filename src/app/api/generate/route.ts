@@ -1,13 +1,23 @@
 import { NextResponse } from "next/server";
-import { prisma, getDefaultUserId } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { generateRequestSchema } from "@/lib/ai/validation";
 import { generateVariations } from "@/lib/ai/generators";
 import { MissingApiKeyError, AiProviderError } from "@/lib/ai/provider";
+import { requireCurrentUser } from "@/lib/auth";
+import { handleApiError } from "@/lib/api-errors";
+import { consumeAiOperation } from "@/lib/limits";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
 export async function POST(req: Request) {
+  let userId: string;
+  try {
+    ({ id: userId } = await requireCurrentUser());
+  } catch (e) {
+    return handleApiError(e, "generate:auth", "Authentication failed");
+  }
+
   let body: unknown;
   try {
     body = await req.json();
@@ -29,7 +39,6 @@ export async function POST(req: Request) {
   const { params, save } = parsed.data;
 
   try {
-    const userId = await getDefaultUserId();
     const brand = params.brandId
       ? await prisma.brand.findFirst({ where: { id: params.brandId, userId } })
       : null;
@@ -53,6 +62,7 @@ export async function POST(req: Request) {
         }
       : null;
 
+    await consumeAiOperation(userId);
     const variations = await generateVariations(brandInput, params);
 
     if (!save) return NextResponse.json({ variations, saved: [] });
@@ -96,7 +106,6 @@ export async function POST(req: Request) {
         { status: 502 }
       );
     }
-    console.error("[generate] unexpected error:", e);
-    return NextResponse.json({ error: "Something went wrong generating content." }, { status: 500 });
+    return handleApiError(e, "generate", "Something went wrong generating content.");
   }
 }

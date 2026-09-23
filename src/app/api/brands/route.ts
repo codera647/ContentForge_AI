@@ -1,12 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { prisma, getDefaultUserId } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { brandSchema } from "@/lib/ai/validation";
+import { requireCurrentUser } from "@/lib/auth";
+import { handleApiError } from "@/lib/api-errors";
+import { createBrandWithinLimit } from "@/lib/limits";
 
 export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    const userId = await getDefaultUserId();
+    const { id: userId } = await requireCurrentUser();
     const brands = await prisma.brand.findMany({
       where: { userId },
       orderBy: { createdAt: "desc" },
@@ -14,14 +17,13 @@ export async function GET() {
     });
     return NextResponse.json({ brands });
   } catch (e) {
-    console.error("[brands:list]", e);
-    return NextResponse.json({ error: "Failed to load brands" }, { status: 500 });
+    return handleApiError(e, "brands:list", "Failed to load brands");
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const userId = await getDefaultUserId();
+    const { id: userId } = await requireCurrentUser();
     const parsed = brandSchema.safeParse(await req.json());
     if (!parsed.success) {
       return NextResponse.json(
@@ -29,12 +31,12 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    const brand = await prisma.brand.create({
-      data: { ...parsed.data, userId } as never,
-    });
+    const brand = await createBrandWithinLimit({
+      ...parsed.data,
+      userId,
+    } as never);
     return NextResponse.json({ brand }, { status: 201 });
   } catch (e) {
-    console.error("[brands:create]", e);
-    return NextResponse.json({ error: "Failed to create brand" }, { status: 500 });
+    return handleApiError(e, "brands:create", "Failed to create brand");
   }
 }

@@ -8,7 +8,6 @@ import type {
   GeneratedVariation,
   GenerationParams,
   RepurposeRequest,
-  VariationRequest,
 } from "../types";
 
 const STRATEGY_TEMPERATURES: Record<VariationStrategy, number> = {

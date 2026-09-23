@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { prisma, getDefaultUserId } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { contentUpdateSchema } from "@/lib/ai/validation";
+import { requireCurrentUser } from "@/lib/auth";
+import { handleApiError } from "@/lib/api-errors";
 
 export const runtime = "nodejs";
 
@@ -9,7 +11,7 @@ type Ctx = { params: Promise<{ id: string }> };
 export async function GET(_req: NextRequest, ctx: Ctx) {
   try {
     const { id } = await ctx.params;
-    const userId = await getDefaultUserId();
+    const { id: userId } = await requireCurrentUser();
     const content = await prisma.content.findFirst({
       where: { id, userId },
       include: {
@@ -22,15 +24,14 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
     if (!content) return NextResponse.json({ error: "Content not found" }, { status: 404 });
     return NextResponse.json({ content });
   } catch (e) {
-    console.error("[content:get]", e);
-    return NextResponse.json({ error: "Failed to load content" }, { status: 500 });
+    return handleApiError(e, "content:get", "Failed to load content");
   }
 }
 
 export async function PATCH(req: NextRequest, ctx: Ctx) {
   try {
     const { id } = await ctx.params;
-    const userId = await getDefaultUserId();
+    const { id: userId } = await requireCurrentUser();
     const parsed = contentUpdateSchema.partial().safeParse(await req.json());
     if (!parsed.success) {
       return NextResponse.json(
@@ -38,30 +39,31 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
         { status: 400 }
       );
     }
-    const existing = await prisma.content.findFirst({ where: { id, userId } });
-    if (!existing) return NextResponse.json({ error: "Content not found" }, { status: 404 });
-    const content = await prisma.content.update({
-      where: { id },
+    const updated = await prisma.content.updateMany({
+      where: { id, userId },
       data: { ...parsed.data, format: parsed.data.format as never },
     });
+    if (updated.count === 0) {
+      return NextResponse.json({ error: "Content not found" }, { status: 404 });
+    }
+    const content = await prisma.content.findFirst({ where: { id, userId } });
     return NextResponse.json({ content });
   } catch (e) {
-    console.error("[content:update]", e);
-    return NextResponse.json({ error: "Failed to update content" }, { status: 500 });
+    return handleApiError(e, "content:update", "Failed to update content");
   }
 }
 
 export async function DELETE(_req: NextRequest, ctx: Ctx) {
   try {
     const { id } = await ctx.params;
-    const userId = await getDefaultUserId();
-    const existing = await prisma.content.findFirst({ where: { id, userId } });
-    if (!existing) return NextResponse.json({ error: "Content not found" }, { status: 404 });
-    await prisma.content.delete({ where: { id } });
+    const { id: userId } = await requireCurrentUser();
+    const deleted = await prisma.content.deleteMany({ where: { id, userId } });
+    if (deleted.count === 0) {
+      return NextResponse.json({ error: "Content not found" }, { status: 404 });
+    }
     return NextResponse.json({ ok: true });
   } catch (e) {
-    console.error("[content:delete]", e);
-    return NextResponse.json({ error: "Failed to delete content" }, { status: 500 });
+    return handleApiError(e, "content:delete", "Failed to delete content");
   }
 }
 
@@ -69,16 +71,29 @@ export async function POST(_req: NextRequest, ctx: Ctx) {
   // POST = duplicate
   try {
     const { id } = await ctx.params;
-    const userId = await getDefaultUserId();
+    const { id: userId } = await requireCurrentUser();
     const existing = await prisma.content.findFirst({ where: { id, userId } });
     if (!existing) return NextResponse.json({ error: "Content not found" }, { status: 404 });
-    const { id: _omit, createdAt: _c, updatedAt: _u, ...data } = existing;
     const copy = await prisma.content.create({
-      data: { ...data, title: `${existing.title} (copy)`, status: "draft" } as never,
+      data: {
+        userId: existing.userId,
+        brandId: existing.brandId,
+        title: `${existing.title} (copy)`,
+        body: existing.body,
+        format: existing.format,
+        topic: existing.topic,
+        audience: existing.audience,
+        objective: existing.objective,
+        tone: existing.tone,
+        keywords: existing.keywords,
+        cta: existing.cta,
+        status: "draft",
+        sourceContentId: existing.sourceContentId,
+        variationIndex: existing.variationIndex,
+      } as never,
     });
     return NextResponse.json({ content: copy }, { status: 201 });
   } catch (e) {
-    console.error("[content:duplicate]", e);
-    return NextResponse.json({ error: "Failed to duplicate content" }, { status: 500 });
+    return handleApiError(e, "content:duplicate", "Failed to duplicate content");
   }
 }

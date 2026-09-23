@@ -140,7 +140,7 @@ class OpenAiProvider implements AiProvider {
       }[];
     };
     const choice = data.choices?.[0];
-    let text = choice?.message?.content ?? "";
+    const text = choice?.message?.content ?? "";
 
     // Reasoning models (e.g. glm) may spend the entire max_tokens budget on
     // hidden reasoning_content and return empty content when finish_reason is

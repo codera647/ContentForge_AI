@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { api, type ContentItem } from "@/lib/client";
+import { useState } from "react";
+import { api } from "@/lib/client";
 import { Button, Field, Select, TextInput } from "@/components/ui";
 import { CONTENT_TYPES } from "@/lib/constants";
 import { useToast } from "@/components/ToastProvider";
@@ -30,11 +30,8 @@ export default function ScheduleDialog({
   const [platform, setPlatform] = useState<string>(defaultPlatform ?? "linkedin");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isPast, setIsPast] = useState(false);
-
-  useEffect(() => {
-    setIsPast(new Date(`${date}T${time}`).getTime() < Date.now());
-  }, [date, time]);
+  const [openedAt] = useState(() => Date.now());
+  const isPast = new Date(`${date}T${time}`).getTime() < openedAt;
 
   const submit = async () => {
     setError(null);

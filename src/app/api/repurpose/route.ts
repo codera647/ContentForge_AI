@@ -1,13 +1,23 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { prisma, getDefaultUserId } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { repurposeRequestSchema } from "@/lib/ai/validation";
 import { repurposeContent } from "@/lib/ai/generators";
 import { MissingApiKeyError, AiProviderError } from "@/lib/ai/provider";
+import { requireCurrentUser } from "@/lib/auth";
+import { handleApiError } from "@/lib/api-errors";
+import { consumeAiOperation } from "@/lib/limits";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
+  let userId: string;
+  try {
+    ({ id: userId } = await requireCurrentUser());
+  } catch (e) {
+    return handleApiError(e, "repurpose:auth", "Authentication failed");
+  }
+
   let parsedBody: unknown;
   try {
     parsedBody = await req.json();
@@ -25,10 +35,8 @@ export async function POST(req: NextRequest) {
   const { contentId, targetFormat } = parsed.data;
 
   try {
-    const userId = await getDefaultUserId();
     const source = await prisma.content.findFirst({
       where: { id: contentId, userId },
-      include: { brand: true },
     });
     if (!source) return NextResponse.json({ error: "Content not found" }, { status: 404 });
     if (source.format === targetFormat) {
@@ -38,22 +46,30 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const brandInput = source.brand
+    const brand = source.brandId
+      ? await prisma.brand.findFirst({ where: { id: source.brandId, userId } })
+      : null;
+    if (source.brandId && !brand) {
+      return NextResponse.json({ error: "Content not found" }, { status: 404 });
+    }
+
+    const brandInput = brand
       ? {
-          name: source.brand.name,
-          description: source.brand.description,
-          industry: source.brand.industry,
-          targetAudience: source.brand.targetAudience,
-          personality: source.brand.personality,
-          tone: source.brand.tone,
-          values: source.brand.values as string[] | null,
-          preferredPhrases: source.brand.preferredPhrases as string[] | null,
-          avoidedPhrases: source.brand.avoidedPhrases as string[] | null,
-          writingStyle: source.brand.writingStyle,
-          exampleContent: source.brand.exampleContent,
+          name: brand.name,
+          description: brand.description,
+          industry: brand.industry,
+          targetAudience: brand.targetAudience,
+          personality: brand.personality,
+          tone: brand.tone,
+          values: brand.values as string[] | null,
+          preferredPhrases: brand.preferredPhrases as string[] | null,
+          avoidedPhrases: brand.avoidedPhrases as string[] | null,
+          writingStyle: brand.writingStyle,
+          exampleContent: brand.exampleContent,
         }
       : null;
 
+    await consumeAiOperation(userId);
     const result = await repurposeContent({
       brand: brandInput,
       sourceBody: source.body,
@@ -98,7 +114,6 @@ export async function POST(req: NextRequest) {
         { status: 502 }
       );
     }
-    console.error("[repurpose] unexpected error:", e);
-    return NextResponse.json({ error: "Something went wrong repurposing content." }, { status: 500 });
+    return handleApiError(e, "repurpose", "Something went wrong repurposing content.");
   }
 }

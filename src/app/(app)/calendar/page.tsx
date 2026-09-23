@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { api, type ScheduleItem } from "@/lib/client";
 import { Button, ErrorBanner } from "@/components/ui";
@@ -29,16 +29,33 @@ export default function CalendarPage() {
     return { from, to };
   }, [cursor]);
 
-  const load = () => {
-    setError(null);
+  const load = useCallback(async () => {
+    try {
+      const data = await api.get<{ schedules: ScheduleItem[] }>(
+        `/api/schedule?from=${range.from.toISOString()}&to=${range.to.toISOString()}`
+      );
+      setError(null);
+      setSchedules(data.schedules);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load schedules");
+    }
+  }, [range]);
+  useEffect(() => {
+    let cancelled = false;
     api
       .get<{ schedules: ScheduleItem[] }>(
         `/api/schedule?from=${range.from.toISOString()}&to=${range.to.toISOString()}`
       )
-      .then((d) => setSchedules(d.schedules))
-      .catch((e) => setError(e.message));
-  };
-  useEffect(load, [range]);
+      .then((data) => {
+        if (!cancelled) setSchedules(data.schedules);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load schedules");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [range]);
 
   const grid = useMemo(() => {
     const first = startOfMonth(cursor);

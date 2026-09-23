@@ -190,7 +190,13 @@ function LibraryInner() {
                   <div className="flex flex-wrap justify-end gap-x-3 gap-y-1 text-[12.5px] font-medium">
                     <Link href={`/library/${item.id}`} className="text-ink2 hover:text-accent">Edit</Link>
                     <button onClick={() => { navigator.clipboard.writeText(item.body); push("success", "Copied."); }} className="text-ink2 hover:text-accent">Copy</button>
-                    <button onClick={() => duplicate(item)} className="text-ink2 hover:text-accent">Duplicate</button>
+                    <button
+                      onClick={() => duplicate(item)}
+                      disabled={busyId === item.id}
+                      className="text-ink2 hover:text-accent disabled:opacity-50"
+                    >
+                      Duplicate
+                    </button>
                     <button onClick={() => setRepurposeFor(item)} className="text-ink2 hover:text-accent">Repurpose</button>
                     <button onClick={() => setScheduleFor(item)} className="text-accent">
                       {item.status === "scheduled" && item.schedules?.length ? "Reschedule" : "Schedule"}
@@ -198,7 +204,13 @@ function LibraryInner() {
                     {item.status === "scheduled" && item.schedules?.length ? (
                       <button onClick={() => unschedule(item)} className="text-warn">Unschedule</button>
                     ) : null}
-                    <button onClick={() => remove(item)} className="text-danger hover:underline">Delete</button>
+                    <button
+                      onClick={() => remove(item)}
+                      disabled={busyId === item.id}
+                      className="text-danger hover:underline disabled:opacity-50"
+                    >
+                      Delete
+                    </button>
                   </div>
                 </td>
               </tr>
