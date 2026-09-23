@@ -133,8 +133,8 @@ multiple items per day stack cleanly.
 
 ## 12. Database Design
 
-- **User** — id (cuid), name, email (unique), timestamps. A single default user
-  backs the v1 single-tenant workspace (swap point for auth).
+- **User** — id (cuid), unique Clerk user ID, unique email, optional profile
+  fields, and timestamps. The Clerk ID is the runtime identity key.
 - **Brand** — belongs to User (cascade); 11 voice fields (lists as JSON);
   has many Content.
 - **Content** — belongs to User; optional Brand (SetNull on brand delete);
@@ -145,6 +145,8 @@ multiple items per day stack cleanly.
 - **ScheduledContent** — belongs to Content and User (cascade);
   `platform` enum; `scheduledAt` datetime; `status` enum
   (pending/published/cancelled). Indexes on `(userId, scheduledAt)` and `contentId`.
+- **AiUsage** — one row per user and UTC day, with an atomic operation counter
+  shared by generation and repurposing.
 
 ## 13. API Design
 
@@ -159,11 +161,22 @@ multiple items per day stack cleanly.
 | `GET/POST /api/schedule`, `PATCH/DELETE /api/schedule/[id]` | Schedule CRUD + calendar range queries |
 | `GET /api/stats` | Dashboard counts, recent, upcoming, AI provider status |
 
-Error contract: `400` validation (with `fieldErrors`) or missing API key,
-`404` not found, `502` provider failure / invalid AI response, `500` unexpected.
+Error contract: `400` validation (with `fieldErrors`) or missing API key, `401`
+unauthenticated, `404` not found/inaccessible, `409` brand or identity conflict,
+`429` daily AI quota, `502` provider failure / invalid AI response, `500` unexpected.
 
 ## 14. Security
 
+- Clerk middleware protects application pages, and every API route independently
+  calls `requireCurrentUser()` before accessing data.
+- First login creates or safely links one Prisma user by verified primary email;
+  the legacy seed user is explicitly excluded from login linking.
+- Brand, content, schedule, dashboard, and AI-usage queries include the current
+  Prisma `userId`. Inaccessible IDs return generic not-found responses.
+- A supplied `brandId`, source content ID, schedule ID, or content ID is accepted
+  only when it belongs to the authenticated user.
+- Brand creation is limited to 3 per user in a serializable transaction. AI
+  generation and repurposing share an atomic 50-operation UTC daily limit.
 - API keys are read only server-side (`process.env` in API routes); the Settings
   page shows provider status and a masked placeholder only — the key never
   reaches the client.
@@ -186,14 +199,18 @@ Error contract: `400` validation (with `fieldErrors`) or missing API key,
 - Repurposing creates a linked draft in the target format; same-format blocked.
 - Scheduling puts content on the correct calendar day; unscheduling reverts status.
 - Dashboard counts are live; quick actions navigate to working flows.
+- New Clerk users receive isolated workspaces and cannot access another user's
+  resources by guessing IDs.
+- The fourth brand and the 51st daily AI operation are rejected server-side.
 - `npm run build` and `npm test` pass; no hardcoded secrets.
 
 ## 17. Testing Strategy
 
-- **Unit tests (Vitest, 31 tests):** prompt-builder (section order, brand-field
+- **Unit and API tests (Vitest, 54 tests):** prompt-builder (section order, brand-field
   injection, avoided phrases, strategy divergence, format notes), validation
   (schemas + tolerant AI-JSON parser), generators (strategy assignment,
-  variation counts, mock provider).
+  variation counts, mock provider), Clerk-to-Prisma identity resolution,
+  ownership/IDOR behavior, and brand/AI limit boundaries.
 - **Integration (verified via API against the live app):** generate → save →
   list → duplicate → repurpose → schedule → calendar range → unschedule;
   error paths (bad format, short topic, same-format repurpose, missing key).
@@ -201,15 +218,17 @@ Error contract: `400` validation (with `fieldErrors`) or missing API key,
 
 ## 18. Known Limitations
 
-- Single-tenant: no auth; all data belongs to one workspace user.
 - Scheduling is planning-only — nothing is published to external networks.
 - "Published" status is manual (set in the editor).
 - JSON-list fields (keywords, phrases) are untyped at the DB level (Prisma `Json`).
 - No streaming; long blog generations wait for the full response.
+- Workspaces are individual; team roles and shared workspaces are not implemented.
+- Accepted AI operations consume quota even when the provider later fails. Provider
+  retries within that operation do not consume additional quota.
 
 ## 19. Future Improvements
 
-- Multi-user auth (NextAuth/Clerk) with per-user workspaces.
+- Team roles and intentionally shared workspaces.
 - Scheduled publisher worker (cron) to flip pending → published and optionally
   post via platform APIs.
 - Streaming generation UI; per-variation regenerate with a chosen strategy.

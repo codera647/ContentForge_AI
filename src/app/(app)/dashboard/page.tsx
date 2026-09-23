@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { api, type ContentItem } from "@/lib/client";
 import { Button, ErrorBanner, StatusBadge } from "@/components/ui";
@@ -35,11 +35,29 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = () => {
-    setError(null);
-    api.get<DashData>("/api/stats").then(setData).catch((e) => setError(e.message));
-  };
-  useEffect(load, []);
+  const load = useCallback(async () => {
+    try {
+      const result = await api.get<DashData>("/api/stats");
+      setError(null);
+      setData(result);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load dashboard");
+    }
+  }, []);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get<DashData>("/api/stats")
+      .then((result) => {
+        if (!cancelled) setData(result);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load dashboard");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (error) return <ErrorBanner message={error} onRetry={load} />;
 

@@ -1,12 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { prisma, getDefaultUserId } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
+import { requireCurrentUser } from "@/lib/auth";
+import { handleApiError } from "@/lib/api-errors";
 
 export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
   try {
-    const userId = await getDefaultUserId();
+    const { id: userId } = await requireCurrentUser();
     const sp = req.nextUrl.searchParams;
     const q = sp.get("q")?.trim();
     const format = sp.get("format");
@@ -44,7 +46,6 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ items, total, page, pageSize });
   } catch (e) {
-    console.error("[content:list]", e);
-    return NextResponse.json({ error: "Failed to load content" }, { status: 500 });
+    return handleApiError(e, "content:list", "Failed to load content");
   }
 }

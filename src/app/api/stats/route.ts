@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
-import { prisma, getDefaultUserId } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { getProviderStatus } from "@/lib/ai/provider";
+import { requireCurrentUser } from "@/lib/auth";
+import { handleApiError } from "@/lib/api-errors";
 
 export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    const userId = await getDefaultUserId();
+    const { id: userId } = await requireCurrentUser();
     const [totalContent, drafts, scheduled, published, archived, brands, recent, upcoming] =
       await Promise.all([
         prisma.content.count({ where: { userId } }),
@@ -36,7 +38,6 @@ export async function GET() {
       ai: getProviderStatus(),
     });
   } catch (e) {
-    console.error("[stats]", e);
-    return NextResponse.json({ error: "Failed to load dashboard stats" }, { status: 500 });
+    return handleApiError(e, "stats", "Failed to load dashboard stats");
   }
 }

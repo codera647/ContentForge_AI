@@ -1,12 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { prisma, getDefaultUserId } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { scheduleSchema } from "@/lib/ai/validation";
+import { requireCurrentUser } from "@/lib/auth";
+import { handleApiError } from "@/lib/api-errors";
 
 export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
   try {
-    const userId = await getDefaultUserId();
+    const { id: userId } = await requireCurrentUser();
     const from = req.nextUrl.searchParams.get("from");
     const to = req.nextUrl.searchParams.get("to");
     const schedules = await prisma.scheduledContent.findMany({
@@ -29,14 +31,13 @@ export async function GET(req: NextRequest) {
     });
     return NextResponse.json({ schedules });
   } catch (e) {
-    console.error("[schedule:list]", e);
-    return NextResponse.json({ error: "Failed to load schedules" }, { status: 500 });
+    return handleApiError(e, "schedule:list", "Failed to load schedules");
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const userId = await getDefaultUserId();
+    const { id: userId } = await requireCurrentUser();
     const parsed = scheduleSchema.safeParse(await req.json());
     if (!parsed.success) {
       return NextResponse.json(
@@ -56,11 +57,13 @@ export async function POST(req: NextRequest) {
       prisma.scheduledContent.create({
         data: { contentId, userId, platform: platform as never, scheduledAt: when },
       }),
-      prisma.content.update({ where: { id: contentId }, data: { status: "scheduled" } }),
+      prisma.content.updateMany({
+        where: { id: contentId, userId },
+        data: { status: "scheduled" },
+      }),
     ]);
     return NextResponse.json({ schedule }, { status: 201 });
   } catch (e) {
-    console.error("[schedule:create]", e);
-    return NextResponse.json({ error: "Failed to schedule content" }, { status: 500 });
+    return handleApiError(e, "schedule:create", "Failed to schedule content");
   }
 }

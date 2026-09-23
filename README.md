@@ -26,6 +26,10 @@ content between formats, and plan it on a monthly **content calendar**.
   date/time with platform and title; edit/unschedule from the calendar.
 - **Dashboard** — live counts (content, drafts, scheduled, brands), recent
   content, upcoming scheduled, quick actions.
+- **Authenticated workspaces** — Clerk sign-up/sign-in with server-side Prisma
+  user resolution and ownership isolation across every API resource.
+- **Server-enforced limits** — up to 3 brands and 50 generation/repurpose
+  operations per user per UTC day.
 - Calm, editorial light UI (warm neutrals + serif reading canvas), fully
   responsive, with loading / empty / success / error states throughout.
 
@@ -36,18 +40,20 @@ content between formats, and plan it on a monthly **content calendar**.
 | Framework | Next.js 16 (App Router) + TypeScript |
 | UI | Tailwind CSS v4 |
 | Database | PostgreSQL (via Prisma ORM) |
+| Authentication | Clerk |
 | AI | Pluggable provider layer — OpenAI-compatible or Anthropic (server-side only) |
-| Tests | Vitest (31 unit tests) |
+| Tests | Vitest (54 unit and API authorization tests) |
 
 ## Architecture
 
 ```
-Browser ──> Next.js App Router
-             ├── src/app/(pages)        UI (client components, no AI logic)
-             └── src/app/api/*          Server-only route handlers
-                   └── src/lib/ai/      provider · prompt-builder · generators · validation · types
-                   └── src/lib/prisma.ts
-                         └── PostgreSQL
+Browser ──> Clerk middleware ──> Next.js App Router
+                                  ├── public/authenticated UI route groups
+                                  └── src/app/api/* route handlers
+                                        ├── requireCurrentUser()
+                                        ├── ownership-scoped Prisma queries
+                                        ├── AI provider + atomic usage limits
+                                        └── Neon PostgreSQL
 ```
 
 The AI layer is provider-switchable via env vars; no secrets ever reach the client.
@@ -56,7 +62,7 @@ The AI layer is provider-switchable via env vars; no secrets ever reach the clie
 
 ```
 ├── docs/PRD.md                  Product requirements (actual implementation)
-├── prisma/schema.prisma         User · Brand · Content · ScheduledContent
+├── prisma/schema.prisma         User · Brand · Content · ScheduledContent · AiUsage
 ├── prisma/migrations/           Committed SQL migrations
 ├── src/
 │   ├── app/
@@ -70,6 +76,8 @@ The AI layer is provider-switchable via env vars; no secrets ever reach the clie
 │   ├── components/              Sidebar, forms, dialogs, UI primitives
 │   └── lib/
 │       ├── ai/                  provider, prompt-builder, generators, validation, types
+│       ├── auth.ts              Clerk-to-Prisma identity resolution
+│       ├── limits.ts            Brand and daily AI limits
 │       ├── prisma.ts            DB client
 │       ├── client.ts            Typed API client + shared types
 │       └── constants.ts         Formats, tones, strategies
@@ -92,6 +100,12 @@ Copy `.env.example` → `.env` and fill in:
 | `OPENAI_BASE_URL` | – | Point at an OpenAI-compatible gateway |
 | `ANTHROPIC_API_KEY` | if anthropic | Anthropic key |
 | `ANTHROPIC_MODEL` | – | Default `claude-sonnet-4-20250514` |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | ✅ | Clerk publishable key used by the browser |
+| `CLERK_SECRET_KEY` | ✅ | Clerk secret key; server-side only |
+| `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | ✅ | `/sign-in` |
+| `NEXT_PUBLIC_CLERK_SIGN_UP_URL` | ✅ | `/sign-up` |
+| `NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL` | ✅ | `/dashboard` |
+| `NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL` | ✅ | `/dashboard` |
 
 Set `AI_PROVIDER=mock` to run the whole app offline with a deterministic
 template provider (great for CI).
@@ -128,11 +142,11 @@ npx prisma migrate deploy   # apply committed migrations (prod/CI)
 
 ### Seeding (demo brand voices)
 
-The repo ships an **idempotent seed** (`prisma/seed.ts`) that creates the
-single-tenant default user and the four demo brand voice profiles
+The repo ships an **idempotent optional seed** (`prisma/seed.ts`) that creates a
+legacy demo user and four demo brand voice profiles
 (Acme Coffee, Pulse Athletics, Northstar Finance, Roamly) — verbatim, with
 their complete voice configurations. It never creates duplicates, so it is
-safe to run repeatedly.
+safe to run repeatedly. Authenticated runtime requests never use this demo user.
 
 ```bash
 npm run db:seed             # or: npx prisma db seed
@@ -151,18 +165,17 @@ npm run db:seed             # or: npx prisma db seed
      Client at runtime.
    - `DIRECT_URL` (direct) — used by Prisma for migrations and
      administrative database operations.
-3. Initialize and seed (uses `DIRECT_URL` for the migration):
+3. Initialize the database (uses `DIRECT_URL` for the migration):
 
    ```bash
    export DATABASE_URL="<pooled url>"     # or use the platform's env
    export DIRECT_URL="<direct url>"
    npx prisma migrate deploy              # create the schema
-   npm run db:seed                        # default user + 4 demo brands
    ```
 
-4. Verify: `Brand` has 4 rows, `User` has 1, `Content` and
-   `ScheduledContent` have 0. In the app, Brand Voice lists all four brands
-   and each is selectable on Create Content.
+4. Verify a Clerk sign-up creates its own Prisma `User`; a new workspace starts
+   with no brands, content, or schedules. Run `npm run db:seed` only when legacy
+   demo data is intentionally required.
 5. Deploy the application (see *Production Deployment* below).
 
 ## AI Provider Setup
@@ -214,6 +227,12 @@ deploy target covers everything.
    | `AI_PROVIDER` | `openai` (or `anthropic`) |
    | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | your key |
    | `OPENAI_MODEL` / `ANTHROPIC_MODEL` | optional overrides |
+   | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk production publishable key |
+   | `CLERK_SECRET_KEY` | Clerk production secret key |
+   | `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | `/sign-in` |
+   | `NEXT_PUBLIC_CLERK_SIGN_UP_URL` | `/sign-up` |
+   | `NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL` | `/dashboard` |
+   | `NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL` | `/dashboard` |
 5. **Deploy.** Then run migrations once against the production DB from your
    machine: `DATABASE_URL="<prod url>" npx prisma migrate deploy`
    (or add it as a Vercel build step / use a release command on Railway).
@@ -224,10 +243,13 @@ deploy target covers everything.
 Next.js), add a `DATABASE_URL` pointing at a Railway Postgres plugin, set the AI
 vars, deploy. Build command `npm run build`, start command `npm run start`.
 
-## Testing Results (v1.0)
+## Testing Results
 
-- ✅ 31/31 unit tests pass (`npm run test`)
-- ✅ `npm run build` — clean production build, 16 routes
+- ✅ 54/54 tests pass (`npm run test`), including authentication, cross-user
+  IDOR checks, and brand/AI quota boundaries
+- ✅ `npm run lint` — clean
+- ✅ `prisma validate` and Prisma Client generation — clean
+- ✅ `npm run build` — clean Next.js 16.3.5 production build
 - ✅ Brand CRUD verified end-to-end; contrasting brand voices produce clearly
   different AI output for the same brief
 - ✅ 3-variation generation returns direct / story-driven / educational pieces
@@ -241,6 +263,9 @@ vars, deploy. Build command `npm run build`, start command `npm run start`.
 
 ## Known Limitations
 
-- Single-tenant (no auth) — one shared workspace; see PRD §18.
 - Scheduling is planning-only; nothing is posted to external networks.
 - AI provider failures surface as a generic 502; details are server-logged only.
+- Daily AI usage resets at midnight UTC. Accepted operations consume quota even
+  if the upstream provider later fails; retries within one operation do not.
+- The product has individual workspaces only; team roles and shared workspaces
+  are not implemented.

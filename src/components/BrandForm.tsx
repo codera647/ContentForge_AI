@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { api, type Brand } from "@/lib/client";
+import type { Brand } from "@/lib/client";
 import { Button, Field, ErrorBanner, TagInput, TextArea, TextInput } from "@/components/ui";
 import { TONES } from "@/lib/constants";
 

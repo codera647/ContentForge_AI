@@ -51,7 +51,6 @@ function BrandList({
 }
 
 function BrandDetail({ brand, onDeleted }: { brand: Brand; onDeleted: () => void }) {
-  const router = useRouter();
   const [deleting, setDeleting] = useState(false);
   const list = (v: string[] | null | undefined) => (v?.length ? v : []);
 
@@ -173,14 +172,29 @@ function BrandsInner() {
     [router]
   );
 
-  const load = useCallback(() => {
-    setError(null);
+  const load = useCallback(async () => {
+    try {
+      const data = await api.get<{ brands: Brand[] }>("/api/brands");
+      setError(null);
+      setBrands(data.brands);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load brands");
+    }
+  }, []);
+  useEffect(() => {
+    let cancelled = false;
     api
       .get<{ brands: Brand[] }>("/api/brands")
-      .then((d) => setBrands(d.brands))
-      .catch((e) => setError(e.message));
+      .then((data) => {
+        if (!cancelled) setBrands(data.brands);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load brands");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
-  useEffect(load, [load]);
 
   const active = brands?.find((b) => b.id === activeId) ?? null;
 
