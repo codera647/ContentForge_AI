@@ -130,3 +130,27 @@ textarea {
   border-radius: 6px;
   animation: pulseSoft 1.4s ease-in-out infinite;
 }
+
+/* ---- Landing page scroll reveal (Stage 1 auth/landing) ---- */
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity 0.5s cubic-bezier(0.22, 0.61, 0.36, 1),
+    transform 0.5s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.reveal-in {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .fade-up {
+    animation: none;
+  }
+}

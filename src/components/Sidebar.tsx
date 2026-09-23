@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { Show, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
 
 const PRIMARY_NAV = [
-  { href: "/", label: "Dashboard" },
+  { href: "/dashboard", label: "Dashboard" },
   { href: "/create", label: "Create" },
   { href: "/library", label: "Library" },
   { href: "/calendar", label: "Calendar" },
@@ -35,7 +36,7 @@ function NavLink({ item, active, onClick }: { item: { href: string; label: strin
 export default function Sidebar() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
+  const isActive = (href: string) => (href === "/dashboard" ? pathname.startsWith("/dashboard") : pathname.startsWith(href));
 
   const nav = (
     <>
@@ -54,12 +55,36 @@ export default function Sidebar() {
   );
 
   const wordmark = (
-    <Link href="/" className="mb-7 flex items-baseline gap-1.5">
+    <Link href="/dashboard" className="mb-7 flex items-baseline gap-1.5">
       <span className="text-[17px] font-semibold tracking-tight text-ink">
         ContentForge
       </span>
       <span className="text-[17px] font-medium tracking-tight text-accent">AI</span>
     </Link>
+  );
+
+  const account = (
+    <Show when="signed-in">
+      <div className="flex items-center gap-2">
+        <UserButton  />
+        <span className="meta">Account</span>
+      </div>
+    </Show>
+  );
+
+  const signedOutActions = (
+    <div className="flex flex-col gap-2">
+      <SignInButton mode="modal">
+        <button className="rounded-[8px] border border-linestrong px-3 py-[7px] text-left text-[13.5px] font-medium text-ink transition-colors duration-150 hover:border-accent hover:text-accent">
+          Sign in
+        </button>
+      </SignInButton>
+      <SignUpButton mode="modal">
+        <button className="rounded-[8px] bg-accent px-3 py-[7px] text-left text-[13.5px] font-medium text-white transition-colors duration-150 hover:bg-accentdark">
+          Get started
+        </button>
+      </SignUpButton>
+    </div>
   );
 
   return (
@@ -86,7 +111,9 @@ export default function Sidebar() {
         {wordmark}
         {nav}
         <div className="mt-auto pt-6">
-          <p className="meta">ContentForge AI</p>
+          <Show when="signed-in">{account}</Show>
+          <Show when="signed-out">{signedOutActions}</Show>
+          <p className="meta mt-4">ContentForge AI</p>
           <p className="meta">v1.0</p>
         </div>
       </aside>

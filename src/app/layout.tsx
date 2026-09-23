@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { DM_Sans, Source_Serif_4 } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
 import Sidebar from "@/components/Sidebar";
 import ToastProvider from "@/components/ToastProvider";
 
@@ -25,10 +26,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${dmSans.variable} ${sourceSerif.variable}`}>
       <body className="min-h-screen antialiased">
-        <ToastProvider>
-          <Sidebar />
-          <main className="px-5 py-7 lg:ml-[228px] lg:px-10">{children}</main>
-        </ToastProvider>
+        <ClerkProvider>
+          <ToastProvider>
+            <Sidebar />
+            <main className="px-5 py-7 lg:ml-[228px] lg:px-10">{children}</main>
+          </ToastProvider>
+        </ClerkProvider>
       </body>
     </html>
   );
