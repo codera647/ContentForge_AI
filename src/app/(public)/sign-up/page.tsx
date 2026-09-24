@@ -1,4 +1,5 @@
 import { SignUp } from "@clerk/nextjs";
+import { AUTHENTICATED_HOME } from "@/lib/auth-navigation";
 
 export const metadata = { title: "Create your account · ContentForge AI" };
 
@@ -15,6 +16,7 @@ export default function SignUpPage() {
       </div>
       <SignUp
         signInUrl="/sign-in"
+        fallbackRedirectUrl={AUTHENTICATED_HOME}
         appearance={{
           variables: {
             colorPrimary: "#C75B39",

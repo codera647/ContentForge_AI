@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { Show, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
+import { Show, SignInButton, SignUpButton } from "@clerk/nextjs";
+import AccountButton from "@/components/AccountButton";
 import Reveal from "@/components/landing/Reveal";
+import { AUTHENTICATED_HOME } from "@/lib/auth-navigation";
 
 const FORMATS = [
   "LinkedIn",
@@ -59,20 +61,21 @@ function LandingNav() {
         <div className="flex items-center gap-2.5">
           <Show when="signed-in">
             <Link
-              href="/dashboard"
+              href={AUTHENTICATED_HOME}
+              prefetch={false}
               className="rounded-[8px] bg-accent px-3.5 py-[7px] text-[13.5px] font-medium text-white transition-colors duration-150 hover:bg-accentdark"
             >
               Go to Dashboard
             </Link>
-            <UserButton  />
+            <AccountButton />
           </Show>
           <Show when="signed-out">
-            <SignInButton mode="modal">
+            <SignInButton mode="modal" fallbackRedirectUrl={AUTHENTICATED_HOME}>
               <button className="rounded-[8px] border border-linestrong px-3.5 py-[7px] text-[13.5px] font-medium text-ink transition-colors duration-150 hover:border-accent hover:text-accent">
                 Sign In
               </button>
             </SignInButton>
-            <SignUpButton mode="modal">
+            <SignUpButton mode="modal" fallbackRedirectUrl={AUTHENTICATED_HOME}>
               <button className="rounded-[8px] bg-accent px-3.5 py-[7px] text-[13.5px] font-medium text-white transition-colors duration-150 hover:bg-accentdark">
                 Get Started
               </button>
@@ -208,7 +211,7 @@ export default function LandingPage() {
             <Reveal delay={240}>
               <div className="mt-7 flex flex-wrap items-center gap-3">
                 <Show when="signed-out">
-                  <SignUpButton mode="modal">
+                  <SignUpButton mode="modal" fallbackRedirectUrl={AUTHENTICATED_HOME}>
                     <button className="rounded-[8px] bg-accent px-5 py-2.5 text-[14px] font-medium text-white transition-colors duration-150 hover:bg-accentdark">
                       Start Creating
                     </button>
@@ -216,7 +219,8 @@ export default function LandingPage() {
                 </Show>
                 <Show when="signed-in">
                   <Link
-                    href="/dashboard"
+                    href={AUTHENTICATED_HOME}
+                    prefetch={false}
                     className="rounded-[8px] bg-accent px-5 py-2.5 text-[14px] font-medium text-white transition-colors duration-150 hover:bg-accentdark"
                   >
                     Go to Dashboard
@@ -381,7 +385,7 @@ export default function LandingPage() {
         <Reveal delay={120}>
           <div className="mt-8">
             <Show when="signed-out">
-              <SignUpButton mode="modal">
+              <SignUpButton mode="modal" fallbackRedirectUrl={AUTHENTICATED_HOME}>
                 <button className="rounded-[8px] bg-accent px-6 py-3 text-[14.5px] font-medium text-white transition-colors duration-150 hover:bg-accentdark">
                   Create Your Brand
                 </button>
@@ -389,7 +393,8 @@ export default function LandingPage() {
             </Show>
             <Show when="signed-in">
               <Link
-                href="/dashboard"
+                href={AUTHENTICATED_HOME}
+                prefetch={false}
                 className="rounded-[8px] bg-accent px-6 py-3 text-[14.5px] font-medium text-white transition-colors duration-150 hover:bg-accentdark"
               >
                 Go to Dashboard
@@ -407,21 +412,25 @@ export default function LandingPage() {
             <a href="#features" className="transition-colors duration-150 hover:text-ink">Features</a>
             <a href="#how" className="transition-colors duration-150 hover:text-ink">How it Works</a>
             <Show when="signed-out">
-              <SignInButton mode="modal">
+              <SignInButton mode="modal" fallbackRedirectUrl={AUTHENTICATED_HOME}>
                 <button className="transition-colors duration-150 hover:text-ink">Sign In</button>
               </SignInButton>
-              <SignUpButton mode="modal">
+              <SignUpButton mode="modal" fallbackRedirectUrl={AUTHENTICATED_HOME}>
                 <button className="transition-colors duration-150 hover:text-ink">Get Started</button>
               </SignUpButton>
             </Show>
             <Show when="signed-in">
-              <Link href="/dashboard" className="transition-colors duration-150 hover:text-ink">
+              <Link
+                href={AUTHENTICATED_HOME}
+                prefetch={false}
+                className="transition-colors duration-150 hover:text-ink"
+              >
                 Dashboard
               </Link>
             </Show>
           </nav>
           <Show when="signed-in">
-            <UserButton  />
+            <AccountButton />
           </Show>
         </div>
       </footer>
