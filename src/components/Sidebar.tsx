@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { Show, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
+import { Show, SignInButton, SignUpButton } from "@clerk/nextjs";
+import AccountButton from "@/components/AccountButton";
+import { AUTHENTICATED_HOME } from "@/lib/auth-navigation";
 
 const PRIMARY_NAV = [
   { href: "/dashboard", label: "Dashboard" },
@@ -66,7 +68,7 @@ export default function Sidebar() {
   const account = (
     <Show when="signed-in">
       <div className="flex items-center gap-2">
-        <UserButton  />
+        <AccountButton />
         <span className="meta">Account</span>
       </div>
     </Show>
@@ -74,12 +76,12 @@ export default function Sidebar() {
 
   const signedOutActions = (
     <div className="flex flex-col gap-2">
-      <SignInButton mode="modal">
+      <SignInButton mode="modal" fallbackRedirectUrl={AUTHENTICATED_HOME}>
         <button className="rounded-[8px] border border-linestrong px-3 py-[7px] text-left text-[13.5px] font-medium text-ink transition-colors duration-150 hover:border-accent hover:text-accent">
           Sign in
         </button>
       </SignInButton>
-      <SignUpButton mode="modal">
+      <SignUpButton mode="modal" fallbackRedirectUrl={AUTHENTICATED_HOME}>
         <button className="rounded-[8px] bg-accent px-3 py-[7px] text-left text-[13.5px] font-medium text-white transition-colors duration-150 hover:bg-accentdark">
           Get started
         </button>
