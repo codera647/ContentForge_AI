@@ -35,6 +35,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           signUpUrl={SIGN_UP_URL}
           signInFallbackRedirectUrl={AUTHENTICATED_HOME}
           signUpFallbackRedirectUrl={AUTHENTICATED_HOME}
+          signInForceRedirectUrl={AUTHENTICATED_HOME}
+          signUpForceRedirectUrl={AUTHENTICATED_HOME}
         >
           <ToastProvider>{children}</ToastProvider>
         </ClerkProvider>
