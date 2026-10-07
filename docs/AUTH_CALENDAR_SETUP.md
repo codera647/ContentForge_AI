@@ -28,6 +28,22 @@ NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=/dashboard
 
 These are application paths, not `http://localhost:3000`. Configure the matching sign-in/sign-up paths and `/dashboard` home path in Clerk Dashboard. Both Clerk keys must belong to the same instance; replacing the publishable key requires a rebuild because Next.js embeds public variables in browser assets. For a persistent server/client mismatch, inspect Clerk's `x-clerk-auth-reason` and Vercel runtime logs to distinguish an expired/invalid token, missing session cookie, or incorrect deployed configuration. The proxy logs `[auth] Protected page rejected` with just the application section and reason code; the auth panel also logs the reason as plain text and displays it as a support code after a rejected session. Neither logs tokens or credentials. A development-key warning alone does not identify the rejection reason. A cookie-free terminal request returning `dev-browser-missing` also does not diagnose a signed-in browser; collect the code from the failing browser request.
 
+### Server rejection with `unexpected-error`
+
+In the installed Clerk SDK, `unexpected-error` means a session-verification exception did not match one of its named token errors. A failed network request while obtaining signing keys can produce this result. The code alone does not prove the underlying exception; do not infer a missing cookie or a mismatched key pair from it.
+
+This app supports Clerk's networkless verification through `CLERK_JWT_KEY`:
+
+1. In the same Clerk instance as the publishable and secret keys, open **API Keys → Show JWT public key → PEM Public Key**.
+2. Add the full PEM, including `BEGIN PUBLIC KEY` and `END PUBLIC KEY`, as **CLERK_JWT_KEY** in Vercel's environment variables for the deployment environment being tested. Actual multiline values and escaped `\n` values are both supported. Do not put the secret key in this variable.
+3. Deploy the updated code and retry opening `/dashboard`.
+
+The proxy passes this public key to Clerk's middleware, which still verifies the token's signature, expiry, and claims. With the variable omitted, the SDK keeps its usual remote signing-key lookup. If Clerk rotates the instance's signing key, update this value; automatic remote rotation is not available when pinning a PEM key. The secret key is still required for profile provisioning, webhooks, and Google OAuth token retrieval.
+
+For this local workspace, `.clerk/session-jwt-public-key.pem` contains a public signing key fetched from Clerk's authenticated Backend API and matched against the publishable key's Frontend API JWKS. The file and local `.env` are ignored by Git; Vercel will need the environment variable separately. This local check does not prove Vercel's network connectivity. If `unexpected-error` continues after configuring the public key and redeploying, inspect the failing deployment's server logs rather than weakening authentication.
+
+See [Clerk middleware options](https://clerk.com/docs/reference/nextjs/clerk-middleware) and [Clerk token verification](https://clerk.com/docs/reference/backend/verify-token).
+
 ## Clerk lifecycle webhook
 
 In Clerk Dashboard, add a webhook endpoint at `https://YOUR_APP_HOST/api/webhooks/clerk` and subscribe to `user.created`, `user.updated`, and `user.deleted`. Copy its signing secret into the server environment as `CLERK_WEBHOOK_SIGNING_SECRET`, then restart/redeploy the app. For local testing, use a public tunnel to the local server and register its HTTPS URL.
