@@ -6,7 +6,18 @@ import {
 } from "@/lib/auth-navigation";
 
 export default clerkMiddleware(async (auth, req) => {
-  if (isProtectedAppPath(req.nextUrl.pathname)) await auth.protect();
+  if (isProtectedAppPath(req.nextUrl.pathname)) {
+    const session = await auth();
+    if (!session.userId) {
+      const { reason } = session.debug() as { reason?: string };
+      // Keep deployment diagnostics useful without logging tokens, cookies, or keys.
+      console.warn("[auth] Protected page rejected", {
+        section: req.nextUrl.pathname.split("/")[1],
+        reason: reason ?? session.sessionStatus ?? "no-session",
+      });
+    }
+    await auth.protect();
+  }
 }, {
   signInUrl: SIGN_IN_URL,
   signUpUrl: SIGN_UP_URL,

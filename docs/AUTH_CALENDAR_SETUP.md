@@ -13,6 +13,21 @@ Use Clerk keys from the same instance. Development and production Clerk instance
 
 The authenticated layout provisions a PostgreSQL `User` from Clerk's verified primary email before rendering the workspace. Login and webhook delivery share an idempotent resolver that prevents duplicate users and ignores older profile updates. Each user starts with an empty workspace. APIs resolve the authenticated identity on the server and scope brands, content, schedules, usage, and calendar connections to that user.
 
+### Blank sign-in screen after signup
+
+Clerk's sign-in component does not render for an already authenticated user in single-session mode. If the browser is signed in but the server rejects its session, dashboard protection redirects to sign-in and can leave only the page heading visible. The auth pages now redirect server-authenticated users directly to the dashboard. For browser-only authentication they verify the dashboard API, refresh the session token once on 401, and show an actionable retry message if verification still fails.
+
+Use these values in both local and Vercel environments, then restart/redeploy:
+
+```text
+NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
+NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
+NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=/dashboard
+NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=/dashboard
+```
+
+These are application paths, not `http://localhost:3000`. Configure the matching sign-in/sign-up paths and `/dashboard` home path in Clerk Dashboard. Both Clerk keys must belong to the same instance; replacing the publishable key requires a rebuild because Next.js embeds public variables in browser assets. For a persistent server/client mismatch, inspect Clerk's `x-clerk-auth-reason` and Vercel runtime logs to distinguish an expired/invalid token, missing session cookie, or incorrect deployed configuration. The proxy logs `[auth] Protected page rejected` with just the application section and reason code; the auth panel also logs the reason code. Neither logs tokens or credentials.
+
 ## Clerk lifecycle webhook
 
 In Clerk Dashboard, add a webhook endpoint at `https://YOUR_APP_HOST/api/webhooks/clerk` and subscribe to `user.created`, `user.updated`, and `user.deleted`. Copy its signing secret into the server environment as `CLERK_WEBHOOK_SIGNING_SECRET`, then restart/redeploy the app. For local testing, use a public tunnel to the local server and register its HTTPS URL.
@@ -22,6 +37,16 @@ Signatures are verified before accessing the database. Creation and profile upda
 See [Clerk's database synchronization guide](https://clerk.com/docs/guides/development/webhooks/syncing).
 
 ## Google Calendar consent
+
+Basic Google sign-in in a Clerk development instance can use Clerk's shared credentials without your own Google Cloud project. Calendar synchronization needs your own Google OAuth application and Calendar API configuration. This setup is independent of dashboard access.
+
+1. Create a Google Cloud project and enable **Google Calendar API** under APIs & Services.
+2. Configure the Google Auth Platform consent screen/audience. During testing, add your Google account as a test user and configure the `https://www.googleapis.com/auth/calendar.events` permission.
+3. Create an OAuth client ID with application type **Web application**.
+4. In Clerk Dashboard's Google social connection, turn on **Use custom credentials**. Copy its authorized redirect URI into the OAuth client's authorized redirect URIs in Google Cloud, then enter the client ID and client secret in Clerk. Use Clerk's URI rather than inventing an application callback URL.
+5. Save the connection and choose **Connect Google Calendar** in this app. Approve the calendar permission for the user.
+
+See [Clerk's Google connection instructions](https://clerk.com/docs/guides/configure/auth-strategies/social-connections/google) and [Google's OAuth credentials guide](https://developers.google.com/workspace/guides/create-credentials). Production Clerk Google sign-in also requires custom credentials.
 
 Google sign-in must use your custom Google OAuth credentials in Clerk, with Google Calendar API enabled in that Google Cloud project. Configure the OAuth consent screen and permitted test users as required by your Google project's publishing status. This app requests `https://www.googleapis.com/auth/calendar.events` when the user chooses **Connect Google Calendar** in Calendar or Settings. Existing Google users reauthorize; other users link a Google account through Clerk. Google sign-in alone does not grant calendar access.
 
