@@ -1,4 +1,5 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
+import { getClerkJwtKey } from "@/lib/clerk-config";
 import {
   isProtectedAppPath,
   SIGN_IN_URL,
@@ -19,6 +20,7 @@ export default clerkMiddleware(async (auth, req) => {
     await auth.protect();
   }
 }, {
+  jwtKey: getClerkJwtKey(),
   signInUrl: SIGN_IN_URL,
   signUpUrl: SIGN_UP_URL,
 });
