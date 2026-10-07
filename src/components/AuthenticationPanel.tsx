@@ -19,6 +19,7 @@ const appearance = {
 export default function AuthenticationPanel({ mode }: { mode: "sign-in" | "sign-up" }) {
   const { isLoaded, isSignedIn, session } = useSession();
   const [error, setError] = useState<string | null>(null);
+  const [authReason, setAuthReason] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const opening = isLoaded && isSignedIn && session.status === "active";
   useEffect(() => {
@@ -36,7 +37,8 @@ export default function AuthenticationPanel({ mode }: { mode: "sign-in" | "sign-
       if (!active) return;
       if (result.ready) window.location.replace(AUTHENTICATED_HOME);
       else {
-        if (result.reason) console.warn("[auth] Server rejected completed sign-in", { reason: result.reason });
+        if (result.reason) console.warn(`[auth] Server rejected completed sign-in: ${result.reason}`);
+        setAuthReason(result.reason ?? null);
         setError(result.error);
       }
     });
@@ -57,10 +59,11 @@ export default function AuthenticationPanel({ mode }: { mode: "sign-in" | "sign-
       {(!isLoaded || opening) ? (
         error ? <div className="max-w-md text-center" role="alert">
           <p className="text-sm text-danger">{error}</p>
+          {authReason && <p className="mt-2 text-xs text-ink2">Support code: <code>{authReason}</code></p>}
           <div className="mt-4 flex items-center justify-center gap-4">
             <Button onClick={() => {
               if (!isLoaded) { window.location.reload(); return; }
-              setError(null); setAttempt((value) => value + 1);
+              setError(null); setAuthReason(null); setAttempt((value) => value + 1);
             }}>Try again</Button>
             {opening && <AccountButton />}
             <Link href="/" className="text-sm text-accent">Home</Link>
