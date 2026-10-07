@@ -23,11 +23,14 @@ content between formats, and plan it on a monthly **content calendar**.
   delete, duplicate, repurpose, schedule. Statuses: Draft / Scheduled /
   Published / Archived.
 - **Content Calendar** — monthly grid; scheduled items appear on their
-  date/time with platform and title; edit/unschedule from the calendar.
+  date/time with platform and title; schedule, edit, or cancel from the calendar.
+- **Google Calendar** — opt-in connection through Clerk, with scheduled content
+  synchronized to the user's primary Google calendar and recoverable sync errors.
 - **Dashboard** — live counts (content, drafts, scheduled, brands), recent
   content, upcoming scheduled, quick actions.
 - **Authenticated workspaces** — Clerk sign-up/sign-in with server-side Prisma
-  user resolution and ownership isolation across every API resource.
+  provisioning before dashboard rendering, signed lifecycle webhooks, and
+  ownership isolation across every API resource.
 - **Server-enforced limits** — up to 3 brands and 50 generation/repurpose
   operations per user per UTC day.
 - Calm, editorial light UI (warm neutrals + serif reading canvas), fully
@@ -42,7 +45,7 @@ content between formats, and plan it on a monthly **content calendar**.
 | Database | PostgreSQL (via Prisma ORM) |
 | Authentication | Clerk |
 | AI | Pluggable provider layer — OpenAI-compatible or Anthropic (server-side only) |
-| Tests | Vitest (54 unit and API authorization tests) |
+| Tests | Vitest unit, authorization, calendar sync, and opt-in PostgreSQL integration tests |
 
 ## Architecture
 
@@ -62,17 +65,13 @@ The AI layer is provider-switchable via env vars; no secrets ever reach the clie
 
 ```
 ├── docs/PRD.md                  Product requirements (actual implementation)
-├── prisma/schema.prisma         User · Brand · Content · ScheduledContent · AiUsage
+├── prisma/schema.prisma         User · Brand · Content · ScheduledContent · AiUsage · GoogleCalendarConnection
 ├── prisma/migrations/           Committed SQL migrations
 ├── src/
 │   ├── app/
-│   │   ├── page.tsx             Dashboard
-│   │   ├── create/              Generation workspace
-│   │   ├── library/             Content library + [id] editor
-│   │   ├── calendar/            Monthly calendar
-│   │   ├── brands/              Brand voice list / new / edit
-│   │   ├── settings/            Provider status
-│   │   └── api/                 generate · repurpose · brands · content · schedule · stats
+│   │   ├── (public)/            Landing page and Clerk sign-in/sign-up
+│   │   ├── (app)/               Protected dashboard, create, library, calendar, brands, settings
+│   │   └── api/                 Content APIs, Google Calendar, and signed Clerk webhooks
 │   ├── components/              Sidebar, forms, dialogs, UI primitives
 │   └── lib/
 │       ├── ai/                  provider, prompt-builder, generators, validation, types
@@ -102,6 +101,7 @@ Copy `.env.example` → `.env` and fill in:
 | `ANTHROPIC_MODEL` | – | Default `claude-sonnet-4-20250514` |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | ✅ | Clerk publishable key used by the browser |
 | `CLERK_SECRET_KEY` | ✅ | Clerk secret key; server-side only |
+| `CLERK_WEBHOOK_SIGNING_SECRET` | for lifecycle sync | Signing secret for `/api/webhooks/clerk` |
 | `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | ✅ | `/sign-in` |
 | `NEXT_PUBLIC_CLERK_SIGN_UP_URL` | ✅ | `/sign-up` |
 | `NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL` | ✅ | `/dashboard` |
@@ -109,6 +109,9 @@ Copy `.env.example` → `.env` and fill in:
 
 Set `AI_PROVIDER=mock` to run the whole app offline with a deterministic
 template provider (great for CI).
+
+See [authentication and Google Calendar setup](docs/AUTH_CALENDAR_SETUP.md) for
+Clerk webhook registration, calendar consent, sync behavior, and integration checks.
 
 ## Installation
 
@@ -129,9 +132,8 @@ npm run dev                 # http://localhost:3000
   the URL in `DATABASE_URL`.
 - **Local Postgres:** `createdb contentforge` and set
   `postgresql://postgres:postgres@localhost:5432/contentforge`.
-- **Local MariaDB/MySQL** (as used in this repo's dev container): set
-  `provider = "mysql"` in `prisma/schema.prisma` and a `mysql://…` URL. The
-  models are identical for both engines.
+- The committed migrations and calendar synchronization use PostgreSQL,
+  including PostgreSQL advisory locks for concurrent Google event updates.
 
 Apply schema changes:
 
@@ -245,8 +247,10 @@ vars, deploy. Build command `npm run build`, start command `npm run start`.
 
 ## Testing Results
 
-- ✅ 54/54 tests pass (`npm run test`), including authentication, cross-user
-  IDOR checks, and brand/AI quota boundaries
+- Unit/API coverage includes authentication, cross-user IDOR checks, brand/AI
+  quota boundaries, timezone conversion, and idempotent Google Calendar sync.
+- An opt-in integration suite verifies provisioning and scheduling against
+  the configured PostgreSQL database; see the setup guide for the command.
 - ✅ `npm run lint` — clean
 - ✅ `prisma validate` and Prisma Client generation — clean
 - ✅ `npm run build` — clean Next.js 16.3.5 production build

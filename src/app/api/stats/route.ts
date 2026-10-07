@@ -3,13 +3,16 @@ import { prisma } from "@/lib/prisma";
 import { getProviderStatus } from "@/lib/ai/provider";
 import { requireCurrentUser } from "@/lib/auth";
 import { handleApiError } from "@/lib/api-errors";
+import { AI_DAILY_LIMIT, BRAND_LIMIT, utcUsageDay } from "@/lib/limits";
 
 export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    const { id: userId } = await requireCurrentUser();
-    const [totalContent, drafts, scheduled, published, archived, brands, recent, upcoming] =
+    const user = await requireCurrentUser();
+    const userId = user.id;
+    const day = utcUsageDay();
+    const [totalContent, drafts, scheduled, published, archived, brands, recent, upcoming, aiUsage] =
       await Promise.all([
         prisma.content.count({ where: { userId } }),
         prisma.content.count({ where: { userId, status: "draft" } }),
@@ -29,6 +32,7 @@ export async function GET() {
           take: 5,
           include: { content: { select: { id: true, title: true, format: true } } },
         }),
+        prisma.aiUsage.findUnique({ where: { userId_day: { userId, day } }, select: { count: true } }),
       ]);
 
     return NextResponse.json({
@@ -36,6 +40,8 @@ export async function GET() {
       recent,
       upcoming,
       ai: getProviderStatus(),
+      user: { name: user.name, email: user.email, imageUrl: user.imageUrl },
+      limits: { brands: BRAND_LIMIT, aiDaily: AI_DAILY_LIMIT, aiUsed: aiUsage?.count ?? 0, resetsAt: new Date(day.getTime() + 86_400_000).toISOString() },
     });
   } catch (e) {
     return handleApiError(e, "stats", "Failed to load dashboard stats");

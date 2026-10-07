@@ -67,7 +67,7 @@ export async function POST(req: Request) {
 
     if (!save) return NextResponse.json({ variations, saved: [] });
 
-    const saved = await Promise.all(
+    const saved = await prisma.$transaction(
       variations.map((v, i) =>
         prisma.content.create({
           data: {

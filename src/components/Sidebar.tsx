@@ -105,6 +105,7 @@ export default function Sidebar() {
       {open && (
         <div className="z-30 border-b border-line bg-canvas px-5 py-3 lg:hidden" onClick={() => setOpen(false)}>
           {nav}
+          <div className="border-t border-line pt-3 mt-3">{account}</div>
         </div>
       )}
 

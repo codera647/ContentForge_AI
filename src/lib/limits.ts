@@ -39,7 +39,7 @@ export async function createBrandWithinLimit(
           if (count >= BRAND_LIMIT) throw new BrandLimitError();
           return tx.brand.create({ data });
         },
-        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 }
       );
     } catch (error) {
       const retryable =
@@ -77,7 +77,15 @@ export async function consumeAiOperation(
     where: { userId_day: { userId, day } },
     select: { count: true },
   });
-  if (existing) throw new AiLimitError();
+  if (existing) {
+    if (existing.count >= AI_DAILY_LIMIT) throw new AiLimitError();
+    // Another request may have created the row between updateMany and findUnique.
+    const raced = await client.aiUsage.updateMany({
+      where: { userId, day, count: { lt: AI_DAILY_LIMIT } }, data: { count: { increment: 1 } },
+    });
+    if (raced.count === 1) return;
+    throw new AiLimitError();
+  }
 
   try {
     await client.aiUsage.create({ data: { userId, day, count: 1 } });

@@ -88,6 +88,16 @@ describe("server-side limits", () => {
     });
   });
 
+  it("increments a row another request created before findUnique instead of falsely rejecting quota", async () => {
+    const client = { aiUsage: {
+      updateMany: vi.fn().mockResolvedValueOnce({ count: 0 }).mockResolvedValueOnce({ count: 1 }),
+      findUnique: vi.fn().mockResolvedValue({ count: 1 }), create: vi.fn(),
+    } };
+    await expect(consumeAiOperation("user-a", new Date(), client as never)).resolves.toBeUndefined();
+    expect(client.aiUsage.updateMany).toHaveBeenCalledTimes(2);
+    expect(client.aiUsage.create).not.toHaveBeenCalled();
+  });
+
   it("allows a third brand but rejects a fourth brand", async () => {
     const create = vi.fn().mockResolvedValue({ id: "brand-3" });
     const count = vi.fn().mockResolvedValueOnce(2).mockResolvedValueOnce(3);

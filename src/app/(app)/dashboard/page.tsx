@@ -13,6 +13,8 @@ interface Stats {
   brands: number;
 }
 interface DashData {
+  user: { name: string | null; email: string };
+  limits: { brands: number; aiDaily: number; aiUsed: number; resetsAt: string };
   stats: Stats;
   recent: (Pick<ContentItem, "id" | "title" | "format" | "status" | "createdAt"> & { brand: { name: string } | null })[];
   upcoming: { id: string; scheduledAt: string; platform: string; content: { id: string; title: string; format: string } }[];
@@ -70,19 +72,32 @@ export default function DashboardPage() {
       </div>
     );
 
-  const { stats, recent, upcoming, ai } = data;
+  const { stats, recent, upcoming, ai, user, limits } = data;
 
   return (
     <div className="mx-auto max-w-5xl fade-up">
       {/* Masthead */}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-[28px] font-semibold leading-tight tracking-tight">{greeting()}</h1>
+          <h1 className="text-[28px] font-semibold leading-tight tracking-tight">{greeting()}{user.name ? `, ${user.name.split(" ")[0]}` : ""}</h1>
           <p className="mt-1 text-sm text-ink2">Here&apos;s what&apos;s happening with your content.</p>
         </div>
         <Link href="/create">
           <Button>New content</Button>
         </Link>
+      </div>
+
+      {(stats.brands === 0 || stats.totalContent === 0) && <section className="mt-6 border border-line bg-surface p-5">
+        <h2 className="text-base font-semibold">Welcome to your workspace</h2>
+        <p className="mt-1 text-sm text-ink2">Start with your brand voice, then write and schedule your first piece.</p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          {[{ label: "1. Define your brand", href: "/brands/new", done: stats.brands > 0 }, { label: "2. Create content", href: "/create", done: stats.totalContent > 0 }, { label: "3. Plan your calendar", href: "/calendar", done: stats.scheduled > 0 }].map((step) => <Link key={step.href} href={step.href} className={`border-l-2 pl-3 text-sm ${step.done ? "border-ok text-ok" : "border-accent text-accent"}`}>{step.done ? "✓ " : ""}{step.label}</Link>)}
+        </div>
+      </section>}
+
+      <div className="mt-5 flex flex-wrap justify-between gap-3 text-xs text-ink2">
+        <span>{limits.aiUsed} / {limits.aiDaily} AI operations today · {stats.brands} / {limits.brands} brands</span>
+        <Link href="/calendar" className="text-accent underline underline-offset-2">Connect Google Calendar & schedule content →</Link>
       </div>
 
       {/* Counters — typographic, not cards */}

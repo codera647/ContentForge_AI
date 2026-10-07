@@ -25,7 +25,9 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-import { requireCurrentUser } from "@/lib/auth";
+import { requireCurrentUser, ensureCurrentWorkspace } from "@/lib/auth";
+import { syncClerkUser } from "@/lib/user-sync";
+import { Prisma } from "@prisma/client";
 import { PublicApiError } from "@/lib/server-errors";
 
 function clerkUser(email = "person@example.com") {
@@ -35,6 +37,7 @@ function clerkUser(email = "person@example.com") {
     lastName: "Person",
     username: null,
     imageUrl: "https://example.com/avatar.png",
+    updatedAt: Date.parse("2026-10-07T10:00:00Z"),
     primaryEmailAddressId: "email-a",
     emailAddresses: [
       {
@@ -48,7 +51,7 @@ function clerkUser(email = "person@example.com") {
 
 describe("requireCurrentUser", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mocks.auth.mockResolvedValue({ userId: "clerk-a" });
   });
 
@@ -81,6 +84,7 @@ describe("requireCurrentUser", () => {
         email: "person@example.com",
         name: "Test Person",
         imageUrl: "https://example.com/avatar.png",
+        clerkUpdatedAt: new Date("2026-10-07T10:00:00Z"),
       },
     });
   });
@@ -95,5 +99,72 @@ describe("requireCurrentUser", () => {
     } satisfies Partial<PublicApiError>);
     expect(mocks.updateMany).not.toHaveBeenCalled();
     expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it("provisions a workspace directly from a verified session before dashboard APIs run", async () => {
+    mocks.currentUser.mockResolvedValue(clerkUser());
+    mocks.findUnique.mockResolvedValue(null);
+    mocks.create.mockResolvedValue({ id: "new-workspace", clerkUserId: "clerk-a" });
+    await expect(ensureCurrentWorkspace()).resolves.toMatchObject({ id: "new-workspace" });
+  });
+
+  it("refuses an unverified primary email even if another email is verified", async () => {
+    const profile = clerkUser();
+    profile.emailAddresses[0].verification.status = "unverified";
+    await expect(syncClerkUser(profile)).rejects.toMatchObject({ code: "identity_email_unverified" });
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses profiles that do not belong to the authenticated session", async () => {
+    mocks.currentUser.mockResolvedValue({ ...clerkUser(), id: "clerk-b" });
+    await expect(ensureCurrentWorkspace()).rejects.toMatchObject({ status: 401 });
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it("updates changed names, avatars and verified primary email without changing workspace ownership", async () => {
+    const existing = { id: "user-a", clerkUserId: "clerk-a", deletedAt: null, clerkUpdatedAt: new Date("2026-10-06T10:00:00Z") };
+    mocks.findUnique.mockResolvedValue(existing);
+    mocks.updateMany.mockResolvedValue({ count: 1 });
+    await syncClerkUser(clerkUser("NEW@example.com"));
+    expect(mocks.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: "user-a", clerkUserId: "clerk-a", deletedAt: null }),
+      data: expect.objectContaining({ email: "new@example.com", name: "Test Person" }),
+    }));
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it("ignores duplicate or older profile events", async () => {
+    const existing = { id: "user-a", clerkUserId: "clerk-a", clerkUpdatedAt: new Date("2026-10-08T00:00:00Z") };
+    mocks.findUnique.mockResolvedValue(existing);
+    await expect(syncClerkUser(clerkUser())).resolves.toBe(existing);
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects access to deactivated accounts and never resurrects them", async () => {
+    mocks.findUnique.mockResolvedValue({ id: "user-a", deletedAt: new Date() });
+    await expect(requireCurrentUser()).rejects.toMatchObject({ code: "account_deactivated" });
+    await expect(syncClerkUser(clerkUser())).rejects.toMatchObject({ code: "account_deactivated" });
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("links a verified legacy account using a conditional update", async () => {
+    const linked = { id: "legacy-a", clerkUserId: "clerk-a", clerkUpdatedAt: new Date("2026-10-07T10:00:00Z") };
+    mocks.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: "legacy-a", clerkUserId: null }).mockResolvedValueOnce(linked);
+    mocks.updateMany.mockResolvedValue({ count: 1 });
+    await expect(syncClerkUser(clerkUser())).resolves.toBe(linked);
+    expect(mocks.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "legacy-a", clerkUserId: null, deletedAt: null } }));
+  });
+
+  it("does not transfer an email already owned by another Clerk identity", async () => {
+    mocks.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: "user-b", clerkUserId: "clerk-b" });
+    await expect(syncClerkUser(clerkUser())).rejects.toMatchObject({ code: "identity_conflict" });
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("recovers when a webhook provisions the same user during first-login creation", async () => {
+    const existing = { id: "user-a", clerkUserId: "clerk-a", clerkUpdatedAt: new Date("2026-10-07T10:00:00Z") };
+    mocks.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(null).mockResolvedValueOnce(existing);
+    mocks.create.mockRejectedValueOnce(new Prisma.PrismaClientKnownRequestError("unique", { code: "P2002", clientVersion: "6" }));
+    await expect(syncClerkUser(clerkUser())).resolves.toBe(existing);
   });
 });

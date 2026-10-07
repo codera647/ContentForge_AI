@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { brandSchema } from "@/lib/ai/validation";
 import { requireCurrentUser } from "@/lib/auth";
-import { handleApiError } from "@/lib/api-errors";
+import { handleApiError, readJson } from "@/lib/api-errors";
 
 export const runtime = "nodejs";
 
@@ -24,7 +24,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   try {
     const { id } = await ctx.params;
     const { id: userId } = await requireCurrentUser();
-    const parsed = brandSchema.partial().safeParse(await req.json());
+    const parsed = brandSchema.partial().safeParse(await readJson(req));
     if (!parsed.success) {
       return NextResponse.json(
         { error: "Validation failed", fieldErrors: parsed.error.flatten().fieldErrors },

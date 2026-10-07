@@ -82,6 +82,9 @@ export interface ScheduleItem {
   platform: string;
   scheduledAt: string;
   status: string;
+  googleEventUrl?: string | null;
+  googleEventId?: string | null;
+  googleSyncError?: string | null;
   content: { id: string; title: string; body: string; format: string; status: string; brand?: { name: string } | null };
 }
 
@@ -89,4 +92,9 @@ export interface Variation {
   title: string;
   body: string;
   strategy: string;
+}
+
+export interface CalendarSyncResult {
+  status: "synced" | "skipped" | "error";
+  error?: string;
 }

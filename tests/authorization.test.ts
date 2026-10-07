@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { PublicApiError } from "@/lib/server-errors";
+vi.mock("server-only", () => ({}));
 
 const mocks = vi.hoisted(() => ({
   requireCurrentUser: vi.fn(),
@@ -12,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   scheduleFindFirst: vi.fn(),
   scheduleFindMany: vi.fn(),
   getProviderStatus: vi.fn(),
+  usageFindUnique: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({
@@ -20,6 +22,8 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    $transaction: vi.fn(async (callback) => callback({ scheduledContent: { findFirst: mocks.scheduleFindFirst } })),
+    aiUsage: { findUnique: mocks.usageFindUnique },
     brand: { findFirst: mocks.brandFindFirst, count: mocks.brandCount },
     content: {
       findFirst: mocks.contentFindFirst,
@@ -52,6 +56,7 @@ describe("API ownership isolation", () => {
     mocks.brandCount.mockResolvedValue(0);
     mocks.contentFindMany.mockResolvedValue([]);
     mocks.scheduleFindMany.mockResolvedValue([]);
+    mocks.usageFindUnique.mockResolvedValue(null);
     mocks.getProviderStatus.mockReturnValue({
       name: "mock",
       configured: true,

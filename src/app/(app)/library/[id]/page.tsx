@@ -1,8 +1,8 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { api, type ContentItem } from "@/lib/client";
+import { api, type ContentItem, type CalendarSyncResult } from "@/lib/client";
 import { ErrorBanner, Select, TextArea, TextInput } from "@/components/ui";
 import { CONTENT_TYPE_LABELS } from "@/lib/constants";
 import { useToast } from "@/components/ToastProvider";
@@ -21,6 +21,10 @@ export default function ContentDetailPage({ params }: { params: Promise<{ id: st
   const [dirty, setDirty] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
   const [showRepurpose, setShowRepurpose] = useState(false);
+  const reload = useCallback(async () => {
+    const result = await api.get<{ content: ContentItem }>(`/api/content/${id}`);
+    setItem(result.content); setStatus(result.content.status);
+  }, [id]);
 
   useEffect(() => {
     api
@@ -37,11 +41,16 @@ export default function ContentDetailPage({ params }: { params: Promise<{ id: st
   const save = async () => {
     setSaving(true);
     try {
-      await api.patch(`/api/content/${id}`, { title, body, status });
+      const result = await api.patch<{ content: ContentItem; calendarSync: CalendarSyncResult[] }>(`/api/content/${id}`, { title, body, status });
+      setItem(result.content);
       setDirty(false);
       push("success", "Saved.");
+      const failed = result.calendarSync.find((sync) => sync.status === "error");
+      if (failed) push("info", failed.error ?? "Saved. Google Calendar sync needs a retry.");
+      return true;
     } catch (e) {
       push("error", e instanceof Error ? e.message : "Save failed");
+      return false;
     } finally {
       setSaving(false);
     }
@@ -77,6 +86,7 @@ export default function ContentDetailPage({ params }: { params: Promise<{ id: st
 
       {/* Editable title */}
       <TextInput
+        disabled={saving}
         value={title}
         onChange={(e) => { setTitle(e.target.value); setDirty(true); }}
         className="mt-3 !rounded-none !border-0 !bg-transparent !px-0 !text-[24px] !font-semibold !tracking-tight focus:!outline-none"
@@ -84,6 +94,7 @@ export default function ContentDetailPage({ params }: { params: Promise<{ id: st
 
       {/* Editorial canvas */}
       <TextArea
+        disabled={saving}
         value={body}
         onChange={(e) => { setBody(e.target.value); setDirty(true); }}
         className="editorial-body mt-3 !min-h-[420px] resize-y !rounded-none !border-y !border-line !bg-surface !px-0 !py-5 font-editorial focus:!outline-none sm:!px-6"
@@ -97,18 +108,19 @@ export default function ContentDetailPage({ params }: { params: Promise<{ id: st
         </span>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <Select
+            disabled={saving}
             value={status}
             onChange={(e) => { setStatus(e.target.value); setDirty(true); }}
             className="!w-auto !py-1 !text-[12.5px]"
-            options={["draft", "scheduled", "published", "archived"].map((s) => ({ value: s, label: s[0].toUpperCase() + s.slice(1) }))}
+            options={["draft", ...(item.schedules?.length ? ["scheduled"] : []), "published", "archived"].map((s) => ({ value: s, label: s[0].toUpperCase() + s.slice(1) }))}
           />
           <button onClick={save} disabled={!dirty || saving} className="text-[13px] font-medium text-accent disabled:opacity-40">
             {saving ? "Saving…" : dirty ? "Save" : "Saved"}
           </button>
-          <button onClick={() => setShowSchedule(true)} className="text-[13px] font-medium text-ink2 hover:text-accent">
+          <button disabled={saving} onClick={async () => { if (!dirty || await save()) setShowSchedule(true); }} className="text-[13px] font-medium text-ink2 hover:text-accent disabled:opacity-40">
             {item.status === "scheduled" && item.schedules?.length ? "Reschedule" : "Schedule"}
           </button>
-          <button onClick={() => setShowRepurpose(true)} className="text-[13px] font-medium text-ink2 hover:text-accent">Repurpose</button>
+          <button disabled={saving} onClick={async () => { if (!dirty || await save()) setShowRepurpose(true); }} className="text-[13px] font-medium text-ink2 hover:text-accent disabled:opacity-40">Repurpose</button>
           <button onClick={() => { navigator.clipboard.writeText(body); push("success", "Copied to clipboard."); }} className="text-[13px] font-medium text-ink2 hover:text-accent">Copy</button>
         </div>
       </div>
@@ -117,11 +129,11 @@ export default function ContentDetailPage({ params }: { params: Promise<{ id: st
         <ScheduleDialog
           contentId={item.id}
           contentTitle={title}
-          defaultPlatform={item.format}
+          defaultPlatform={item.schedules?.[0]?.platform ?? item.format}
           existingScheduleId={item.schedules?.[0]?.id}
           existingAt={item.schedules?.[0] ? new Date(item.schedules[0].scheduledAt).toISOString() : undefined}
           onClose={() => setShowSchedule(false)}
-          onScheduled={() => { setShowSchedule(false); push("success", "Scheduled — see it on your calendar."); }}
+          onScheduled={() => { setShowSchedule(false); reload().catch((error: Error) => push("error", error.message)); }}
         />
       )}
       {showRepurpose && (

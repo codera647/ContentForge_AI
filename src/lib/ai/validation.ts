@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { CONTENT_TYPES } from "@/lib/constants";
+import { CONTENT_TYPES, CONTENT_STATUSES, type ContentTypeValue } from "@/lib/constants";
 import type { GeneratedVariation } from "./types";
 
-export const formatValues = CONTENT_TYPES.map((t) => t.value) as [string, ...string[]];
+export const formatValues = CONTENT_TYPES.map((t) => t.value) as [ContentTypeValue, ...ContentTypeValue[]];
 
 export const generationParamsSchema = z.object({
   brandId: z.string().min(1).nullable().optional(),
@@ -53,7 +53,19 @@ export const contentUpdateSchema = z.object({
 export const scheduleSchema = z.object({
   contentId: z.string().min(1),
   platform: z.enum(formatValues),
-  scheduledAt: z.string().datetime({ offset: true }).or(z.string().min(10)),
+  scheduledAt: z.string().datetime({ offset: true }),
+});
+
+export const scheduleUpdateSchema = scheduleSchema.omit({ contentId: true }).partial()
+  .refine((value) => value.platform !== undefined || value.scheduledAt !== undefined, "Choose a date/time or platform to update");
+
+export const contentListSchema = z.object({
+  q: z.string().trim().max(500).optional(),
+  format: z.enum(formatValues).optional(),
+  status: z.enum(CONTENT_STATUSES).optional(),
+  brandId: z.string().min(1).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(50).default(20),
 });
 
 /**
@@ -74,10 +86,19 @@ export function parseAiJson(raw: string): GeneratedVariation {
   }
 
   // Scan for the first balanced JSON object containing "body"
-  const start = text.indexOf("{");
+  let start = text.indexOf("{");
   while (start !== -1) {
     let depth = 0;
+    let inString = false;
+    let escaped = false;
     for (let i = start; i < text.length; i++) {
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (text[i] === "\\") escaped = true;
+        else if (text[i] === '"') inString = false;
+        continue;
+      }
+      if (text[i] === '"') { inString = true; continue; }
       if (text[i] === "{") depth++;
       else if (text[i] === "}") {
         depth--;
@@ -92,6 +113,7 @@ export function parseAiJson(raw: string): GeneratedVariation {
     }
     const next = text.indexOf("{", start + 1);
     if (next === -1) break;
+    start = next;
   }
   throw new Error("invalid_ai_response");
 }

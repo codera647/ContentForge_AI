@@ -1,9 +1,9 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { api, type Brand, type ContentItem } from "@/lib/client";
+import { api, type Brand, type ContentItem, type CalendarSyncResult } from "@/lib/client";
 import { Button, EmptyState, ErrorBanner, StatusBadge, TextInput, Select } from "@/components/ui";
 import { CONTENT_TYPES, CONTENT_TYPE_LABELS } from "@/lib/constants";
 import { useToast } from "@/components/ToastProvider";
@@ -24,31 +24,37 @@ function LibraryInner() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [scheduleFor, setScheduleFor] = useState<ContentItem | null>(null);
   const [repurposeFor, setRepurposeFor] = useState<ContentItem | null>(null);
+  const [page, setPage] = useState(1);
+  const requestVersion = useRef(0);
 
   const load = useCallback(
-    (search = q, st = status, fmt = format, br = brandId) => {
+    (search = q, st = status, fmt = format, br = brandId, requestedPage = page) => {
+      const version = ++requestVersion.current;
       setError(null);
       const params = new URLSearchParams();
       if (search) params.set("q", search);
       if (st) params.set("status", st);
       if (fmt) params.set("format", fmt);
       if (br) params.set("brandId", br);
+      params.set("page", String(requestedPage));
       api
         .get<{ items: ContentItem[]; total: number }>(`/api/content?${params.toString()}`)
         .then((d) => {
+          if (version !== requestVersion.current) return;
+          if (requestedPage > 1 && d.items.length === 0) { setPage(Math.max(1, Math.ceil(d.total / 20))); return; }
           setItems(d.items);
           setTotal(d.total);
         })
-        .catch((e) => setError(e.message));
+        .catch((e) => { if (version === requestVersion.current) setError(e.message); });
     },
-    [q, status, format, brandId]
+    [q, status, format, brandId, page]
   );
 
   useEffect(() => {
-    const t = setTimeout(() => load(q, status, format, brandId), 300);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, status, format, brandId]);
+    const versions = requestVersion;
+    const t = setTimeout(() => load(), 300);
+    return () => { clearTimeout(t); versions.current++; };
+  }, [load]);
 
   useEffect(() => {
     api.get<{ brands: Brand[] }>("/api/brands").then((d) => setBrands(d.brands)).catch(() => {});
@@ -59,11 +65,11 @@ function LibraryInner() {
     setBusyId(item.id);
     try {
       await api.del(`/api/content/${item.id}`);
-      setItems((xs) => xs!.filter((x) => x.id !== item.id));
-      setTotal((t) => t - 1);
+      load();
       push("success", "Deleted.");
     } catch (e) {
       push("error", e instanceof Error ? e.message : "Delete failed");
+      load();
     } finally {
       setBusyId(null);
     }
@@ -83,9 +89,14 @@ function LibraryInner() {
   };
 
   const unschedule = async (item: ContentItem) => {
-    await api.del(`/api/schedule/${item.schedules![0].id}`);
-    push("success", "Unscheduled — back to draft.");
-    load();
+    setBusyId(item.id);
+    try {
+      const result = await api.del<{ calendarSync: CalendarSyncResult }>(`/api/schedule/${item.schedules![0].id}`);
+      push("success", "Schedule cancelled.");
+      if (result.calendarSync.status === "error") push("info", result.calendarSync.error ?? "Google Calendar removal needs a retry.");
+      load();
+    } catch (error) { push("error", error instanceof Error ? error.message : "Could not cancel schedule"); }
+    finally { setBusyId(null); }
   };
 
   const hasActiveFilters = q || status || format || brandId;
@@ -101,10 +112,10 @@ function LibraryInner() {
 
       {/* Filters row */}
       <div className="mt-5 grid gap-2 border-y border-line py-3 sm:grid-cols-2 lg:grid-cols-4">
-        <TextInput placeholder="Search title, body, topic…" value={q} onChange={(e) => setQ(e.target.value)} className="!py-1.5 !text-[13px]" />
+        <TextInput placeholder="Search title, body, topic…" value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} className="!py-1.5 !text-[13px]" />
         <Select
           value={status}
-          onChange={(e) => setStatus(e.target.value)}
+          onChange={(e) => { setStatus(e.target.value); setPage(1); }}
           className="!py-1.5 !text-[13px]"
           options={[
             { value: "", label: "All statuses" },
@@ -113,13 +124,13 @@ function LibraryInner() {
         />
         <Select
           value={format}
-          onChange={(e) => setFormat(e.target.value)}
+          onChange={(e) => { setFormat(e.target.value); setPage(1); }}
           className="!py-1.5 !text-[13px]"
           options={[{ value: "", label: "All formats" }, ...CONTENT_TYPES.map((t) => ({ value: t.value, label: t.label }))]}
         />
         <Select
           value={brandId}
-          onChange={(e) => setBrandId(e.target.value)}
+          onChange={(e) => { setBrandId(e.target.value); setPage(1); }}
           className="!py-1.5 !text-[13px]"
           options={[{ value: "", label: "All brands" }, ...brands.map((b) => ({ value: b.id, label: b.name }))]}
         />
@@ -202,7 +213,7 @@ function LibraryInner() {
                       {item.status === "scheduled" && item.schedules?.length ? "Reschedule" : "Schedule"}
                     </button>
                     {item.status === "scheduled" && item.schedules?.length ? (
-                      <button onClick={() => unschedule(item)} className="text-warn">Unschedule</button>
+                      <button disabled={busyId === item.id} onClick={() => unschedule(item)} className="text-warn disabled:opacity-40">Unschedule</button>
                     ) : null}
                     <button
                       onClick={() => remove(item)}
@@ -223,7 +234,7 @@ function LibraryInner() {
         <ScheduleDialog
           contentId={scheduleFor.id}
           contentTitle={scheduleFor.title}
-          defaultPlatform={scheduleFor.format}
+          defaultPlatform={scheduleFor.schedules?.[0]?.platform ?? scheduleFor.format}
           existingScheduleId={scheduleFor.schedules?.[0]?.id}
           existingAt={scheduleFor.schedules?.[0] ? new Date(scheduleFor.schedules[0].scheduledAt).toISOString() : undefined}
           onClose={() => setScheduleFor(null)}
@@ -237,6 +248,11 @@ function LibraryInner() {
           onDone={() => { setRepurposeFor(null); push("success", "Repurposed — saved as a new draft."); load(); }}
         />
       )}
+      {total > 20 && <div className="mt-5 flex items-center justify-between border-t border-line pt-3">
+        <Button variant="secondary" disabled={page <= 1} onClick={() => setPage((page) => page - 1)}>Previous</Button>
+        <span className="meta">Page {page} of {Math.ceil(total / 20)}</span>
+        <Button variant="secondary" disabled={page >= Math.ceil(total / 20)} onClick={() => setPage((page) => page + 1)}>Next</Button>
+      </div>}
     </div>
   );
 }

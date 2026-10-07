@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { api, type Brand, type ContentItem, type Variation } from "@/lib/client";
+import { api, type Brand, type ContentItem, type Variation, type CalendarSyncResult } from "@/lib/client";
 import { Button, ErrorBanner, Field, Select, TagInput, TextArea, TextInput } from "@/components/ui";
 import { CONTENT_TYPES, LENGTHS, LENGTH_GUIDANCE, OBJECTIVES, STRATEGY_LABELS, TONES } from "@/lib/constants";
 import { useToast } from "@/components/ToastProvider";
@@ -140,11 +140,15 @@ function CreateInner() {
     const r = results?.[idx];
     if (!r?.savedId) return;
     try {
-      await api.patch(`/api/content/${r.savedId}`, { body: r.editedBody });
+      const result = await api.patch<{ calendarSync: CalendarSyncResult[] }>(`/api/content/${r.savedId}`, { body: r.editedBody });
       setResults((rs) => rs!.map((x, j) => (j === idx ? { ...x, body: x.editedBody } : x)));
       push("success", "Edits saved.");
+      const failed = result.calendarSync.find((sync) => sync.status === "error");
+      if (failed) push("info", failed.error ?? "Saved. Google Calendar sync needs a retry.");
+      return true;
     } catch (e) {
       push("error", e instanceof Error ? e.message : "Save failed");
+      return false;
     }
   };
 
@@ -341,7 +345,7 @@ function CreateInner() {
                       <button onClick={() => regenerate(activeIdx)} disabled={active.regenerating} className="text-[13px] font-medium text-ink2 hover:text-accent disabled:opacity-50">
                         {active.regenerating ? "Writing…" : "Regenerate"}
                       </button>
-                      <button onClick={() => setScheduleFor(active)} disabled={!active.savedId} className="text-[13px] font-medium text-accent disabled:opacity-50">Schedule</button>
+                      <button onClick={async () => { if (active.editedBody === active.body || await saveEdit(activeIdx)) setScheduleFor(active); }} disabled={!active.savedId} className="text-[13px] font-medium text-accent disabled:opacity-50">Schedule</button>
                     </div>
                   </div>
                 </article>
