@@ -5,6 +5,8 @@ import { api } from "@/lib/client";
 import { Button, Field, Select, TextInput } from "@/components/ui";
 import { CONTENT_TYPES } from "@/lib/constants";
 import { useToast } from "@/components/ToastProvider";
+import { localDateInput, localTimeInput, scheduleIso } from "@/lib/calendar/dates";
+import type { CalendarSyncResult } from "@/lib/client";
 
 export default function ScheduleDialog({
   contentId,
@@ -12,6 +14,7 @@ export default function ScheduleDialog({
   defaultPlatform,
   existingScheduleId,
   existingAt,
+  initialDate,
   onClose,
   onScheduled,
 }: {
@@ -20,13 +23,13 @@ export default function ScheduleDialog({
   defaultPlatform?: string;
   existingScheduleId?: string;
   existingAt?: string;
+  initialDate?: string;
   onClose: () => void;
   onScheduled?: () => void;
 }) {
   const { push } = useToast();
-  const now = new Date();
-  const [date, setDate] = useState(existingAt ? existingAt.slice(0, 10) : now.toISOString().slice(0, 10));
-  const [time, setTime] = useState(existingAt ? existingAt.slice(11, 16) : "10:00");
+  const [date, setDate] = useState(() => existingAt ? localDateInput(existingAt) : initialDate ?? localDateInput(new Date()));
+  const [time, setTime] = useState(() => existingAt ? localTimeInput(existingAt) : "10:00");
   const [platform, setPlatform] = useState<string>(defaultPlatform ?? "linkedin");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,14 +39,16 @@ export default function ScheduleDialog({
   const submit = async () => {
     setError(null);
     setSaving(true);
-    const scheduledAt = new Date(`${date}T${time}:00`).toISOString();
     try {
+      const scheduledAt = scheduleIso(date, time);
+      let result: { calendarSync: CalendarSyncResult };
       if (existingScheduleId) {
-        await api.patch(`/api/schedule/${existingScheduleId}`, { scheduledAt, platform });
+        result = await api.patch(`/api/schedule/${existingScheduleId}`, { scheduledAt, platform });
       } else {
-        await api.post("/api/schedule", { contentId, platform, scheduledAt });
+        result = await api.post("/api/schedule", { contentId, platform, scheduledAt });
       }
       push("success", existingScheduleId ? "Schedule updated." : `Scheduled for ${date} at ${time}.`);
+      if (result.calendarSync.status === "error") push("info", result.calendarSync.error ?? "Saved. Google Calendar sync needs a retry.");
       onScheduled?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Scheduling failed");
@@ -53,13 +58,15 @@ export default function ScheduleDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-ink/30 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 grid place-items-center bg-ink/30 p-4" onClick={() => { if (!saving) onClose(); }}>
       <div
         className="w-full max-w-md rounded-[10px] border border-line bg-surface p-6 shadow-[var(--shadow-overlay)]"
         onClick={(e) => e.stopPropagation()}
+        role="dialog" aria-modal="true" aria-label="Schedule content"
       >
         <h2 className="text-lg font-semibold tracking-tight">Schedule</h2>
         <p className="mb-5 mt-1 truncate text-sm text-faint">{contentTitle}</p>
+        <p className="mb-4 text-xs text-ink2">Times use your device timezone. Connected Google calendars sync automatically.</p>
         {error && <p className="mb-4 border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">{error}</p>}
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
@@ -84,8 +91,8 @@ export default function ScheduleDialog({
           </Field>
         </div>
         <div className="mt-6 flex justify-end gap-2 border-t border-line pt-4">
-          <Button variant="tertiary" onClick={onClose}>Cancel</Button>
-          <Button onClick={submit} loading={saving}>
+          <Button variant="tertiary" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button onClick={submit} loading={saving} disabled={!date || !time}>
             {existingScheduleId ? "Update" : "Schedule"}
           </Button>
         </div>

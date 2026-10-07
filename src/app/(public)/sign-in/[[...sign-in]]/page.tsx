@@ -13,6 +13,8 @@ export default function SignInPage() {
         <p className="mt-1 text-[14px] text-ink2">Sign in to your ContentForge workspace.</p>
       </div>
       <SignIn
+        routing="path"
+        path="/sign-in"
         signUpUrl="/sign-up"
         fallbackRedirectUrl={AUTHENTICATED_HOME}
         appearance={{

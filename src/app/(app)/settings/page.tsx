@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/client";
 import { ErrorBanner } from "@/components/ui";
+import GoogleCalendarConnection from "@/components/GoogleCalendarConnection";
 
 interface Stats {
   ai: { name: string; configured: boolean; model: string };
@@ -22,6 +23,7 @@ export default function SettingsPage() {
       <h1 className="text-[28px] font-semibold tracking-tight">Settings</h1>
       <p className="mt-1 text-sm text-ink2">Environment and provider configuration.</p>
       <div className="rule mt-4" />
+      <GoogleCalendarConnection />
 
       {error && <div className="mt-4"><ErrorBanner message={error} /></div>}
       {!data && !error && <div className="mt-6 skeleton h-56" />}

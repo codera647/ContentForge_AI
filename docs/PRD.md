@@ -1,7 +1,7 @@
 # ContentForge AI — Product Requirements Document (PRD)
 
-> This document describes the **actual, implemented** system. Every feature listed
-> here exists in the codebase and has been verified against the running application.
+> This document describes the implemented system. Authentication and calendar
+> configuration and verification steps are in [AUTH_CALENDAR_SETUP.md](AUTH_CALENDAR_SETUP.md).
 
 ---
 
@@ -77,8 +77,10 @@ clicks an item to preview, edit or unschedule it (which returns it to Draft).
 | FR8 | Library: search, filter (format/status/brand), edit, delete, duplicate | ✅ `/library` |
 | FR9 | Statuses: Draft, Scheduled, Published, Archived | ✅ enum + badges |
 | FR10 | Monthly calendar with scheduled items on date/time | ✅ `/calendar` |
-| FR11 | Dashboard: totals, recent, upcoming, quick actions | ✅ `/` |
+| FR11 | Dashboard: personal workspace, onboarding, totals, usage, recent, upcoming, quick actions | ✅ `/dashboard` |
 | FR12 | Loading, empty, success and error states throughout | ✅ |
+| FR13 | Clerk sign-in/sign-up provisions an isolated database workspace | ✅ |
+| FR14 | Opt-in Google Calendar sync for scheduled content | ✅ `/calendar` and `/settings` |
 
 ## 7. AI Requirements
 
@@ -117,8 +119,14 @@ same request.
 Monthly grid (Monday-first, 6 weeks), prev/next/today navigation. Items render on
 their day with time + title; past-due pending items are amber-flagged. Clicking an
 item opens a popover: full content preview, edit schedule, unschedule (reverts
-content to Draft), open in library. Scheduling sets content status to Scheduled;
+content to Draft after its last pending schedule), open in library. Scheduling sets content status to Scheduled;
 multiple items per day stack cleanly.
+
+Users can choose saved content directly from a calendar day. Times use the
+browser's timezone and are persisted as UTC instants. Connecting Google Calendar
+through Clerk adds scheduled content to the user's primary calendar; edits and
+cancellations synchronize automatically. Failed external changes remain retryable.
+Sync is one-way from ContentForge; Google events are not imported.
 
 ## 11. Technical Architecture
 
@@ -134,7 +142,8 @@ multiple items per day stack cleanly.
 ## 12. Database Design
 
 - **User** — id (cuid), unique Clerk user ID, unique email, optional profile
-  fields, and timestamps. The Clerk ID is the runtime identity key.
+  fields, profile event timestamp, soft-deactivation timestamp, and timestamps.
+  The Clerk ID is the runtime identity key.
 - **Brand** — belongs to User (cascade); 11 voice fields (lists as JSON);
   has many Content.
 - **Content** — belongs to User; optional Brand (SetNull on brand delete);
@@ -144,9 +153,12 @@ multiple items per day stack cleanly.
   has many ScheduledContent.
 - **ScheduledContent** — belongs to Content and User (cascade);
   `platform` enum; `scheduledAt` datetime; `status` enum
-  (pending/published/cancelled). Indexes on `(userId, scheduledAt)` and `contentId`.
+  (pending/published/cancelled), Google event references, and retryable sync errors.
+  Indexes on `(userId, scheduledAt)` and `contentId`.
 - **AiUsage** — one row per user and UTC day, with an atomic operation counter
   shared by generation and repurposing.
+- **GoogleCalendarConnection** — one per user, containing the Clerk external
+  account ID, calendar ID, and enabled preference; OAuth tokens remain in Clerk.
 
 ## 13. API Design
 
@@ -160,6 +172,9 @@ multiple items per day stack cleanly.
 | `POST /api/content/[id]` | Duplicate as new draft |
 | `GET/POST /api/schedule`, `PATCH/DELETE /api/schedule/[id]` | Schedule CRUD + calendar range queries |
 | `GET /api/stats` | Dashboard counts, recent, upcoming, AI provider status |
+| `GET/POST/DELETE /api/calendar/google` | Connection status, enable sync, pause sync |
+| `POST /api/calendar/google/sync` | Retry up to five pending Google changes |
+| `POST /api/webhooks/clerk` | Signed account creation, profile updates, and deactivation |
 
 Error contract: `400` validation (with `fieldErrors`) or missing API key, `401`
 unauthenticated, `404` not found/inaccessible, `409` brand or identity conflict,
@@ -167,10 +182,14 @@ unauthenticated, `404` not found/inaccessible, `409` brand or identity conflict,
 
 ## 14. Security
 
-- Clerk middleware protects application pages, and every API route independently
-  calls `requireCurrentUser()` before accessing data.
+- Clerk proxy protects application pages, and resource APIs independently call
+  `requireCurrentUser()` before accessing data. The public lifecycle webhook
+  verifies Clerk's signature instead of using a browser session.
 - First login creates or safely links one Prisma user by verified primary email;
   the legacy seed user is explicitly excluded from login linking.
+- Workspace provisioning runs before the authenticated layout renders. Signed
+  lifecycle events share the same resolver; older profile events cannot overwrite
+  newer data and deactivated accounts cannot reclaim their workspace.
 - Brand, content, schedule, dashboard, and AI-usage queries include the current
   Prisma `userId`. Inaccessible IDs return generic not-found responses.
 - A supplied `brandId`, source content ID, schedule ID, or content ID is accepted
@@ -206,11 +225,15 @@ unauthenticated, `404` not found/inaccessible, `409` brand or identity conflict,
 
 ## 17. Testing Strategy
 
-- **Unit and API tests (Vitest, 54 tests):** prompt-builder (section order, brand-field
+- **Unit and API tests (Vitest):** prompt-builder (section order, brand-field
   injection, avoided phrases, strategy divergence, format notes), validation
   (schemas + tolerant AI-JSON parser), generators (strategy assignment,
   variation counts, mock provider), Clerk-to-Prisma identity resolution,
-  ownership/IDOR behavior, and brand/AI limit boundaries.
+  ownership/IDOR behavior, brand/AI limit boundaries, signed webhooks, timezone
+  handling, and Google event creation, retries, updates, and cancellation.
+- **Opt-in PostgreSQL integration:** concurrent user provisioning, profile
+  ordering, two-user isolation, and schedule/status consistency; temporary
+  identities are removed after the run.
 - **Integration (verified via API against the live app):** generate → save →
   list → duplicate → repurpose → schedule → calendar range → unschedule;
   error paths (bad format, short topic, same-format repurpose, missing key).

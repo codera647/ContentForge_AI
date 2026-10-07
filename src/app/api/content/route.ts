@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
 import { requireCurrentUser } from "@/lib/auth";
 import { handleApiError } from "@/lib/api-errors";
+import { contentListSchema } from "@/lib/ai/validation";
 
 export const runtime = "nodejs";
 
@@ -10,26 +11,23 @@ export async function GET(req: NextRequest) {
   try {
     const { id: userId } = await requireCurrentUser();
     const sp = req.nextUrl.searchParams;
-    const q = sp.get("q")?.trim();
-    const format = sp.get("format");
-    const status = sp.get("status");
-    const brandId = sp.get("brandId");
-    const page = Math.max(1, parseInt(sp.get("page") ?? "1", 10) || 1);
-    const pageSize = Math.min(50, parseInt(sp.get("pageSize") ?? "20", 10) || 20);
+    const parsed = contentListSchema.safeParse(Object.fromEntries(sp));
+    if (!parsed.success) return NextResponse.json({ error: "Invalid library filters", fieldErrors: parsed.error.flatten().fieldErrors }, { status: 400 });
+    const { q, format, status, brandId, page, pageSize } = parsed.data;
 
     const where: Prisma.ContentWhereInput = {
       userId,
       ...(q
         ? {
             OR: [
-              { title: { contains: q } },
-              { body: { contains: q } },
-              { topic: { contains: q } },
+              { title: { contains: q, mode: "insensitive" } },
+              { body: { contains: q, mode: "insensitive" } },
+              { topic: { contains: q, mode: "insensitive" } },
             ],
           }
         : {}),
-      ...(format ? { format: format as never } : {}),
-      ...(status ? { status: status as never } : {}),
+      ...(format ? { format } : {}),
+      ...(status ? { status } : {}),
       ...(brandId ? { brandId } : {}),
     };
 
@@ -39,7 +37,7 @@ export async function GET(req: NextRequest) {
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * pageSize,
         take: pageSize,
-        include: { brand: { select: { name: true } }, schedules: true, source: { select: { title: true } } },
+        include: { brand: { select: { name: true } }, schedules: { where: { status: "pending" }, orderBy: { scheduledAt: "asc" } }, source: { select: { title: true } } },
       }),
       prisma.content.count({ where }),
     ]);

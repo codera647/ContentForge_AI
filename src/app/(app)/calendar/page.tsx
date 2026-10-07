@@ -2,10 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { api, type ScheduleItem } from "@/lib/client";
+import { api, type ScheduleItem, type CalendarSyncResult } from "@/lib/client";
 import { Button, ErrorBanner } from "@/components/ui";
 import { CONTENT_TYPE_LABELS } from "@/lib/constants";
 import ScheduleDialog from "@/components/ScheduleDialog";
+import CalendarScheduleDialog from "@/components/CalendarScheduleDialog";
+import GoogleCalendarConnection from "@/components/GoogleCalendarConnection";
+import { localDateInput } from "@/lib/calendar/dates";
+import { useToast } from "@/components/ToastProvider";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -17,15 +21,19 @@ const fmtTime = (d: string | Date) =>
   new Date(d).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 
 export default function CalendarPage() {
+  const { push } = useToast();
   const [cursor, setCursor] = useState(() => startOfMonth(new Date()));
   const [schedules, setSchedules] = useState<ScheduleItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<ScheduleItem | null>(null);
   const [editing, setEditing] = useState<ScheduleItem | null>(null);
+  const [scheduleDate, setScheduleDate] = useState<string | null>(null);
 
   const range = useMemo(() => {
-    const from = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
-    const to = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0, 23, 59, 59);
+    const first = startOfMonth(cursor);
+    const offset = (first.getDay() + 6) % 7;
+    const from = new Date(cursor.getFullYear(), cursor.getMonth(), 1 - offset);
+    const to = new Date(cursor.getFullYear(), cursor.getMonth(), 42 - offset, 23, 59, 59, 999);
     return { from, to };
   }, [cursor]);
 
@@ -36,6 +44,7 @@ export default function CalendarPage() {
       );
       setError(null);
       setSchedules(data.schedules);
+      setSelected((current) => current ? data.schedules.find((item) => item.id === current.id) ?? null : null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load schedules");
     }
@@ -47,7 +56,10 @@ export default function CalendarPage() {
         `/api/schedule?from=${range.from.toISOString()}&to=${range.to.toISOString()}`
       )
       .then((data) => {
-        if (!cancelled) setSchedules(data.schedules);
+        if (!cancelled) {
+          setSchedules(data.schedules); setError(null);
+          setSelected((current) => current ? data.schedules.find((item) => item.id === current.id) ?? null : null);
+        }
       })
       .catch((e) => {
         if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load schedules");
@@ -80,13 +92,14 @@ export default function CalendarPage() {
   const todayStr = new Date().toDateString();
 
   const unschedule = async (s: ScheduleItem) => {
-    if (!confirm(`Unschedule "${s.content.title}"? It goes back to Draft.`)) return;
+    if (!confirm(`Cancel the schedule for "${s.content.title}"?`)) return;
     try {
-      await api.del(`/api/schedule/${s.id}`);
+      const result = await api.del<{ calendarSync: CalendarSyncResult }>(`/api/schedule/${s.id}`);
+      if (result.calendarSync.status === "error") push("info", result.calendarSync.error ?? "Unscheduled. Google Calendar removal needs a retry.");
       setSelected(null);
       load();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to unschedule");
+      push("error", e instanceof Error ? e.message : "Failed to unschedule");
     }
   };
 
@@ -100,6 +113,7 @@ export default function CalendarPage() {
           </p>
         </div>
         <div className="flex items-center gap-4">
+          <Button onClick={() => setScheduleDate(localDateInput(new Date()))}>Schedule content</Button>
           <div className="flex items-center gap-1">
             <Button variant="tertiary" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))}>←</Button>
             <Button variant="tertiary" onClick={() => setCursor(startOfMonth(new Date()))}>Today</Button>
@@ -111,6 +125,8 @@ export default function CalendarPage() {
         </div>
       </div>
 
+      <GoogleCalendarConnection onSynced={load} refreshToken={schedules?.map((item) => `${item.id}:${item.scheduledAt}:${item.googleSyncError}`).join("|")} />
+
       {error && <div className="mt-4"><ErrorBanner message={error} onRetry={load} /></div>}
       {!schedules && !error && (
         <div className="mt-6 grid grid-cols-7 gap-0">
@@ -119,7 +135,7 @@ export default function CalendarPage() {
       )}
 
       {schedules && (
-        <div className={`mt-6 grid gap-10 lg:grid-cols-[minmax(0,1fr)_${selected ? "300px" : "0px"}]`}>
+        <div className={`mt-6 grid gap-10 ${selected ? "lg:grid-cols-[minmax(0,1fr)_300px]" : "lg:grid-cols-1"}`}>
           {/* Grid */}
           <div className="min-w-0">
             <div className="grid grid-cols-7 border-b border-line">
@@ -138,9 +154,9 @@ export default function CalendarPage() {
                       inMonth ? "bg-surface" : "bg-canvas"
                     }`}
                   >
-                    <div className={`mb-1 text-right text-[11px] tabular-nums ${isToday ? "font-semibold text-accent" : "text-faint"}`}>
+                    <button aria-label={`Schedule content on ${localDateInput(date)}`} onClick={() => setScheduleDate(localDateInput(date))} className={`mb-1 block w-full text-right text-[11px] tabular-nums hover:text-accent ${isToday ? "font-semibold text-accent" : "text-faint"}`}>
                       {date.getDate()}
-                    </div>
+                    </button>
                     <div className="space-y-1">
                       {items.map((s) => {
                         const overdue = new Date(s.scheduledAt) < new Date() && s.status === "pending";
@@ -193,6 +209,8 @@ export default function CalendarPage() {
               <div className="mt-4 max-h-72 overflow-y-auto whitespace-pre-wrap border-l-2 border-accent/40 pl-4 font-editorial text-[14.5px] leading-relaxed text-ink2">
                 {selected.content.body}
               </div>
+              {selected.googleSyncError && <p className="mt-3 text-xs text-warn">{selected.googleSyncError}</p>}
+              {selected.googleEventUrl && !selected.googleSyncError && <a className="mt-3 block text-xs text-accent underline" href={selected.googleEventUrl} target="_blank" rel="noopener noreferrer">View in Google Calendar</a>}
               <div className="mt-5 flex flex-wrap gap-x-4 gap-y-1 border-t border-line pt-3">
                 <button onClick={() => { setEditing(selected); setSelected(null); }} className="text-[13px] font-medium text-ink2 hover:text-accent">Edit schedule</button>
                 <button onClick={() => unschedule(selected)} className="text-[13px] font-medium text-danger hover:underline">Unschedule</button>
@@ -214,6 +232,7 @@ export default function CalendarPage() {
           onScheduled={() => { setEditing(null); load(); }}
         />
       )}
+      {scheduleDate && <CalendarScheduleDialog date={scheduleDate} onClose={() => setScheduleDate(null)} onScheduled={() => { setScheduleDate(null); load(); }} />}
     </div>
   );
 }

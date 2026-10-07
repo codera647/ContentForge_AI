@@ -6,6 +6,8 @@ import {
   scheduleSchema,
   repurposeRequestSchema,
   parseAiJson,
+  scheduleUpdateSchema,
+  contentListSchema,
 } from "@/lib/ai/validation";
 
 describe("generationParamsSchema", () => {
@@ -58,6 +60,11 @@ describe("brandSchema", () => {
 });
 
 describe("scheduleSchema", () => {
+  it("rejects arbitrary dates, unknown platforms and empty updates", () => {
+    expect(scheduleSchema.safeParse({ contentId: "c1", platform: "x", scheduledAt: "not-a-valid-date" }).success).toBe(false);
+    expect(scheduleUpdateSchema.safeParse({ platform: "invalid" }).success).toBe(false);
+    expect(scheduleUpdateSchema.safeParse({}).success).toBe(false);
+  });
   it("accepts ISO datetime", () => {
     expect(scheduleSchema.safeParse({ contentId: "c1", platform: "x", scheduledAt: new Date().toISOString() }).success).toBe(true);
   });
@@ -73,6 +80,10 @@ describe("repurposeRequestSchema", () => {
 });
 
 describe("parseAiJson", () => {
+  it("advances past invalid objects and safely handles braces within strings", () => {
+    expect(parseAiJson('{bad} Here: {"title":"T","body":"a { brace"}').body).toBe("a { brace");
+    expect(() => parseAiJson('{bad} {still bad}')).toThrow("invalid_ai_response");
+  });
   it("parses clean JSON", () => {
     expect(parseAiJson('{"title":"T","body":"B"}')).toEqual({ title: "T", body: "B" });
   });
@@ -100,5 +111,13 @@ describe("parseAiJson", () => {
   it("throws invalid_ai_response on garbage", () => {
     expect(() => parseAiJson("no json here at all")).toThrow("invalid_ai_response");
     expect(() => parseAiJson('{"wrong":1}')).toThrow("invalid_ai_response");
+  });
+});
+
+describe("library filter validation", () => {
+  it("rejects negative pagination and unknown status/format", () => {
+    expect(contentListSchema.safeParse({ pageSize: -20 }).success).toBe(false);
+    expect(contentListSchema.safeParse({ status: "whatever" }).success).toBe(false);
+    expect(contentListSchema.safeParse({ format: "tiktok" }).success).toBe(false);
   });
 });
