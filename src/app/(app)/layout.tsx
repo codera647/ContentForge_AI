@@ -7,16 +7,18 @@ import { SIGN_IN_URL } from "@/lib/auth-navigation";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   let failure: string | null = null;
+  let supportCode: string | undefined;
   let signedOut = false;
   try { await ensureCurrentWorkspace(); }
   catch (error) {
     unstable_rethrow(error);
     signedOut = error instanceof PublicApiError && error.status === 401;
     failure = error instanceof PublicApiError ? error.message : "Your workspace is temporarily unavailable. Please try again.";
+    supportCode = error instanceof PublicApiError ? error.code : undefined;
     if (!(error instanceof PublicApiError)) console.error("[workspace] Provisioning failed");
   }
   if (signedOut) redirect(SIGN_IN_URL);
-  if (failure) return <WorkspaceError message={failure} />;
+  if (failure) return <WorkspaceError message={failure} supportCode={supportCode} />;
   return (
     <>
       <Sidebar />

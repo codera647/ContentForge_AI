@@ -13,6 +13,24 @@ Use Clerk keys from the same instance. Development and production Clerk instance
 
 The authenticated layout provisions a PostgreSQL `User` from Clerk's verified primary email before rendering the workspace. Login and webhook delivery share an idempotent resolver that prevents duplicate users and ignores older profile updates. Each user starts with an empty workspace. APIs resolve the authenticated identity on the server and scope brands, content, schedules, usage, and calendar connections to that user.
 
+The layout and APIs share a request-scoped resolver. Existing active workspaces load directly from PostgreSQL without an extra Clerk profile request; first-time users still require a matching server-fetched Clerk profile with a verified primary email. Profile updates are synchronized by the lifecycle webhook.
+
+### Workspace unavailable after sign-in
+
+The workspace error screen is reached after session verification. Its support code identifies the failed operation without exposing credentials. The same code appears in runtime logs next to `[workspace] Provisioning failed`:
+
+| Support code | Check |
+| --- | --- |
+| `workspace_database_read_P1000` | PostgreSQL credentials in Vercel's Production `DATABASE_URL`. |
+| `workspace_database_read_P1001` | PostgreSQL connectivity, hostname, and active Neon project. |
+| `workspace_database_read_P2021` / `P2022` | Apply migrations to the database used by the deployment. |
+| `workspace_clerk_profile_http_401` / `http_403` | Deployed Clerk secret key and any `CLERK_API_URL` override. Public-key session verification does not replace the secret key used for profiles. |
+| `workspace_clerk_profile_http_404` | The authenticated user must belong to the Clerk instance used by the deployed backend. |
+| `workspace_clerk_profile_ENOTFOUND` / `UND_ERR_CONNECT_TIMEOUT` | DNS or outbound connectivity from the deployed runtime to Clerk. |
+| `workspace_database_write_*` | The error code from account provisioning; identity conflicts remain explicit public errors. |
+
+A successful local database/profile check does not establish that Vercel uses the same configuration. `DATABASE_URL` must be set for the deployment environment, and migrations must target that database. No workspace is created from browser-supplied profile data.
+
 ### Blank sign-in screen after signup
 
 Clerk's sign-in component does not render for an already authenticated user in single-session mode. If the browser is signed in but the server rejects its session, dashboard protection redirects to sign-in and can leave only the page heading visible. The auth pages now redirect server-authenticated users directly to the dashboard. For browser-only authentication they verify the dashboard API, refresh the session token once on 401, and show an actionable retry message if verification still fails.

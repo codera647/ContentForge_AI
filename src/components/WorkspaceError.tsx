@@ -5,12 +5,13 @@ import { useRouter } from "next/navigation";
 import AccountButton from "@/components/AccountButton";
 import { Button } from "@/components/ui";
 
-export default function WorkspaceError({ message }: { message: string }) {
+export default function WorkspaceError({ message, supportCode }: { message: string; supportCode?: string }) {
   const router = useRouter();
   return (
     <div className="mx-auto grid min-h-[70vh] max-w-lg content-center gap-4 px-5">
       <h1 className="text-2xl font-semibold">We couldn&apos;t open your workspace</h1>
       <p className="text-sm text-ink2">{message}</p>
+      {supportCode && <p className="text-xs text-ink2">Support code: <code>{supportCode}</code></p>}
       <div className="flex items-center gap-4">
         <Button onClick={() => router.refresh()}>Try again</Button>
         <AccountButton />
