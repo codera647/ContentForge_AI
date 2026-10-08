@@ -108,6 +108,22 @@ describe("requireCurrentUser", () => {
     await expect(ensureCurrentWorkspace()).resolves.toMatchObject({ id: "new-workspace" });
   });
 
+  it("opens an existing workspace when Clerk profile requests are unavailable", async () => {
+    mocks.findUnique.mockResolvedValue({ id: "user-a", clerkUserId: "clerk-a", deletedAt: null });
+    mocks.currentUser.mockRejectedValue(new TypeError("fetch failed"));
+    await expect(ensureCurrentWorkspace()).resolves.toMatchObject({ id: "user-a" });
+    expect(mocks.currentUser).not.toHaveBeenCalled();
+  });
+
+  it("identifies a first-login Clerk profile failure without creating an unverified workspace", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.findUnique.mockResolvedValue(null);
+    mocks.currentUser.mockRejectedValue({ status: 403 });
+    await expect(ensureCurrentWorkspace()).rejects.toMatchObject({ status: 503, code: "workspace_clerk_profile_http_403" });
+    expect(mocks.create).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
+  });
+
   it("refuses an unverified primary email even if another email is verified", async () => {
     const profile = clerkUser();
     profile.emailAddresses[0].verification.status = "unverified";
